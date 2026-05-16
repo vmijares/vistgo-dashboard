@@ -21,7 +21,11 @@ function fmFetch(url: string, token: string): Promise<{ status: number; body: st
   });
 }
 
-function fix(s: string) { return s.replace(/-\.(\d)/g, "-0.$1"); }
+function fix(s: string) {
+  return s
+    .replace(/-\.(\d)/g, "-0.$1")          // -.39  → -0.39
+    .replace(/:\s*\?(\s*[,}\]])/g, ": null$1"); // : ?  → : null
+}
 
 async function fetchAll(baseUrl: string, token: string): Promise<Record<string, unknown>[]> {
   const results: Record<string, unknown>[] = [];

@@ -20,12 +20,16 @@ const C = {
 };
 
 // ── Props interface ───────────────────────────────────────────
+interface TopCliente { nombre: string; sector: string; facturacion: number }
+interface TopProyecto { nombre: string; cliente: string; importe: number; estado: string }
+
 interface DashboardProps {
   ventasMargen: { año: number; ventas: number; margen: number; pct: number }[];
   feeCv: { año: number; fee: number; cv: number }[];
   proyectosMes: Record<number, number[]>;
   sectores: Record<number, Record<string, number>>;
-  topClientes: { nombre: string; sector: string; facturacion: number }[];
+  topClientes: Record<number, TopCliente[]>;
+  topProyectos: Record<number, TopProyecto[]>;
   años: number[];
   currentYear: number;
   onLogout: () => void;
@@ -42,14 +46,6 @@ const VistgoLogo = ({ size = 32 }: { size?: number }) => (
   </svg>
 );
 
-// ── Mock data for top projects (demo) ─────────────────────────
-const topProyectos = [
-  { nombre: "Señalización HQ Inditex",  cliente: "Inditex Group",  importe: 320000, estado: "Terminado"     },
-  { nombre: "Retail Puig Paris",         cliente: "Puig",           importe: 280000, estado: "En ejecución" },
-  { nombre: "Campaña Mediapro 360º",     cliente: "Mediapro",       importe: 210000, estado: "Terminado"     },
-  { nombre: "Branding Mercadona Sur",    cliente: "Mercadona",      importe: 180000, estado: "En ejecución" },
-  { nombre: "Id. Corporativa CO",        cliente: "Cat. Occidente", importe: 145000, estado: "Terminado"     },
-];
 
 const MESES_CORTO = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
@@ -169,19 +165,15 @@ export default function Dashboard({
   proyectosMes,
   sectores,
   topClientes,
+  topProyectos,
   años,
   currentYear,
   onLogout,
 }: DashboardProps) {
-  const [yearEjec, setYearEjec] = useState<number>(0);
-  const [yearSect, setYearSect] = useState<number>(0);
+  const [selectedYear, setSelectedYear] = useState<number>(0);
 
-  // Initialize year selectors when años prop arrives
   useEffect(() => {
-    if (años.length > 0) {
-      setYearEjec(años[años.length - 1]);
-      setYearSect(años[años.length - 1]);
-    }
+    if (años.length > 0) setSelectedYear(años[años.length - 1]);
   }, [años]);
 
   const last = ventasMargen[ventasMargen.length - 1];
@@ -192,34 +184,33 @@ export default function Dashboard({
       ? (((last.ventas - prev.ventas) / prev.ventas) * 100).toFixed(1)
       : "—";
 
-  const totalEjec = yearEjec ? (proyectosMes[yearEjec] ?? []).reduce((a, b) => a + b, 0) : 0;
+  const totalEjec = selectedYear ? (proyectosMes[selectedYear] ?? []).reduce((a, b) => a + b, 0) : 0;
 
-  // For recharts, año must be string
   const vmData = ventasMargen.map(d => ({ ...d, año: String(d.año) }));
   const feeCvData = feeCv.map(d => ({ ...d, año: String(d.año) }));
 
   const dataEjec = MESES_CORTO.map((mes, i) => ({
-    mes, proyectos: yearEjec ? (proyectosMes[yearEjec]?.[i] ?? 0) : 0,
+    mes, proyectos: selectedYear ? (proyectosMes[selectedYear]?.[i] ?? 0) : 0,
   }));
 
-  const dataSect = yearSect && sectores[yearSect]
-    ? Object.entries(sectores[yearSect])
+  const dataSect = selectedYear && sectores[selectedYear]
+    ? Object.entries(sectores[selectedYear])
         .map(([sector, importe]) => ({ sector, importe }))
         .filter(d => d.importe > 0)
         .sort((a, b) => b.importe - a.importe)
         .slice(0, 8)
     : [];
 
-  const maxCliente = Math.max(...topClientes.map(c => c.facturacion), 1);
+  const clientesAño: TopCliente[] = selectedYear ? (topClientes[selectedYear] ?? []) : [];
+  const proyectosAño: TopProyecto[] = selectedYear ? (topProyectos[selectedYear] ?? []) : [];
+  const maxCliente = Math.max(...clientesAño.map(c => c.facturacion), 1);
 
-  // Average margin across all years
   const avgMargen =
     ventasMargen.length > 0
       ? (ventasMargen.reduce((a, d) => a + d.pct, 0) / ventasMargen.length).toFixed(1)
       : "—";
 
-  // Top cliente KPI
-  const topCliente = topClientes[0];
+  const topCliente = clientesAño[0];
 
   return (
     <div style={{
@@ -243,6 +234,14 @@ export default function Dashboard({
           <p style={{ margin: 0, fontSize: 10, color: C.muted }}>brand implementation experts</p>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+          {/* Global year selector */}
+          {años.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: C.muted, fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Año</span>
+              <YearPill value={selectedYear} options={años} onChange={setSelectedYear} />
+            </div>
+          )}
+          <div style={{ width: 1, height: 20, background: `${C.muted}33` }} />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{
               width: 8, height: 8, borderRadius: "50%",
@@ -287,12 +286,12 @@ export default function Dashboard({
             icon="🗂"
             label="Proyectos ejecutados"
             value={totalEjec}
-            sub={yearEjec ? `datos ${yearEjec}` : "datos del último cierre"}
+            sub={selectedYear ? `datos ${selectedYear}` : "datos del último cierre"}
             accent={C.lime2}
           />
           <KPI
             icon="🏆"
-            label={`Top cliente ${currentYear}`}
+            label={`Top cliente ${selectedYear || currentYear}`}
             value={topCliente ? topCliente.nombre.split(" ")[0] : "—"}
             sub={topCliente ? `${fmtEur(topCliente.facturacion)} · ${topCliente.sector}` : "Sin datos"}
             accent={C.purple}
@@ -347,14 +346,14 @@ export default function Dashboard({
 
           {/* Top Clientes — real FM data */}
           <Card style={{ margin: 0 }}>
-            <STitle title="Top 5 Clientes" sub={`Facturación real ${currentYear} · FileMaker`} />
-            {topClientes.length === 0 ? (
+            <STitle title="Top 5 Clientes" sub={`Facturación ${selectedYear || currentYear} · FileMaker`} />
+            {clientesAño.length === 0 ? (
               <p style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: "40px 0" }}>
-                Sin datos de clientes disponibles
+                Sin datos de clientes para {selectedYear || currentYear}
               </p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {topClientes.map((c, i) => (
+                {clientesAño.map((c, i) => (
                   <div key={`${c.nombre}-${i}`}>
                     <div style={{
                       display: "flex", justifyContent: "space-between",
@@ -400,23 +399,13 @@ export default function Dashboard({
             }}>
               <STitle
                 title="Proyectos ejecutados por mes"
-                sub="Estado: En ejecución o Terminado y facturado"
+                sub={`${selectedYear || "—"} · Estado: En ejecución o Terminado y facturado`}
               />
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                <YearPill
-                  value={yearEjec}
-                  options={años}
-                  onChange={setYearEjec}
-                />
-                <span style={{
-                  background: `${C.lime}22`, color: C.lime, borderRadius: 20,
-                  padding: "2px 10px", fontSize: 11, fontWeight: 700,
-                }}>{totalEjec} total</span>
-              </div>
+              <span style={{
+                background: `${C.lime}22`, color: C.lime, borderRadius: 20,
+                padding: "2px 10px", fontSize: 11, fontWeight: 700, flexShrink: 0,
+              }}>{totalEjec} total</span>
             </div>
-            <p style={{ color: `${C.muted}88`, fontSize: 10, margin: "0 0 10px", fontStyle: "italic" }}>
-              Datos FileMaker en tiempo real · año seleccionado: {yearEjec || "—"}
-            </p>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={dataEjec} barSize={22}>
                 <CartesianGrid strokeDasharray="3 3" stroke={`${C.muted}22`} vertical={false} />
@@ -454,18 +443,8 @@ export default function Dashboard({
 
           {/* Facturación por sector */}
           <Card style={{ margin: 0 }}>
-            <div style={{
-              display: "flex", justifyContent: "space-between",
-              alignItems: "flex-start", marginBottom: 16,
-            }}>
-              <STitle title="Facturación por sector" sub="Importe según cliente · datos FileMaker" />
-              <div style={{ flexShrink: 0 }}>
-                <YearPill
-                  value={yearSect}
-                  options={años}
-                  onChange={setYearSect}
-                />
-              </div>
+            <div style={{ marginBottom: 16 }}>
+              <STitle title="Facturación por sector" sub={`${selectedYear || "—"} · Importe según cliente`} />
             </div>
             {dataSect.length === 0 ? (
               <p style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: "40px 0" }}>
@@ -490,11 +469,16 @@ export default function Dashboard({
             )}
           </Card>
 
-          {/* Top Proyectos — demo data */}
+          {/* Top Proyectos — real FM data */}
           <Card style={{ margin: 0 }}>
-            <STitle title="Top 5 Proyectos" sub="Datos de demostración" />
+            <STitle title="Top 5 Proyectos" sub={`Por importe facturado · ${selectedYear || currentYear}`} />
+            {proyectosAño.length === 0 ? (
+              <p style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: "40px 0" }}>
+                Sin proyectos con importe para {selectedYear || currentYear}
+              </p>
+            ) : null}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {topProyectos.map((p, i) => (
+              {proyectosAño.map((p, i) => (
                 <div key={p.nombre} style={{
                   display: "flex", justifyContent: "space-between",
                   alignItems: "center", padding: "10px 14px",
@@ -525,7 +509,7 @@ export default function Dashboard({
                     </p>
                     <Badge
                       text={p.estado}
-                      color={p.estado === "Terminado" ? C.lime : C.purple}
+                      color={p.estado === "Terminado y facturado" || p.estado === "Terminado" ? C.lime : C.purple}
                     />
                   </div>
                 </div>
@@ -541,7 +525,7 @@ export default function Dashboard({
         }}>
           <VistgoLogo size={16} />
           <span style={{ color: `${C.muted}66`, fontSize: 10 }}>
-            Panel interno · Top proyectos: datos de demostración · Resto: datos FileMaker OData en tiempo real
+            Panel interno · Datos FileMaker OData en tiempo real · {new Date().toLocaleString("es-ES")}
           </span>
         </div>
       </div>

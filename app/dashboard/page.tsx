@@ -2,12 +2,16 @@
 import { useEffect, useState } from "react";
 import Dashboard from "@/components/Dashboard";
 
+type TopCliente = { nombre: string; sector: string; facturacion: number };
+type TopProyecto = { nombre: string; cliente: string; importe: number; estado: string };
+
 type AppData = {
   ventasMargen: { año: number; ventas: number; margen: number; pct: number }[];
   feeCv: { año: number; fee: number; cv: number }[];
   proyectosMes: Record<number, number[]>;
   sectores: Record<number, Record<string, number>>;
-  topClientes: { nombre: string; sector: string; facturacion: number }[];
+  topClientes: Record<number, TopCliente[]>;
+  topProyectos: Record<number, TopProyecto[]>;
   años: number[];
   currentYear: number;
 };
@@ -61,6 +65,7 @@ export default function DashboardPage() {
       proyectosMes={data.proyectosMes}
       sectores={data.sectores}
       topClientes={data.topClientes}
+      topProyectos={data.topProyectos}
       años={data.años}
       currentYear={data.currentYear}
       onLogout={() => { sessionStorage.removeItem("fm_auth"); window.location.href = "/login"; }}

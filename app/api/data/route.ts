@@ -61,8 +61,8 @@ export async function GET(req: NextRequest) {
       fetchAll(`${base}/Factura?$filter=Year ge ${minYear}`, token),
       // Note: $select works here because year, FEEGraph, CVGraph have no spaces
       fetchAll(`${base}/Presupuesto?$filter=year ge ${minYear}&$select=year,FEEGraph,CVGraph`, token),
-      // $select works here too - all month field names have no spaces
-      fetchAll(`${base}/ProyectosEjecutados?$filter=Year ge ${minYear}&$select=Year,Enero,Febrero,Marzo,Abril,Mayo,Junio,Julio,Agosto,Septiembre,Octubre,Noviembre,Diciembre`, token),
+      // No $select — need "Nombre proyecto" and "ID Cliente" (spaces), so fetch all fields
+      fetchAll(`${base}/ProyectosEjecutados?$filter=Year ge ${minYear}`, token),
       // Can't $select here - "Tipo cliente", "Razón Social" have spaces
       fetchAll(`${base}/ClientesGraficos`, token),
     ]);
@@ -141,28 +141,59 @@ export async function GET(req: NextRequest) {
       sm.forEach((a, s) => { sectores[y][s] = Math.round(a); });
     });
 
-    // ── Top clientes (current year) ───────────────────────────
-    const topClientMap = new Map<string, number>();
+    // ── Top clientes per year ─────────────────────────────────
+    const topClientByYear = new Map<number, Map<string, number>>();
     for (const f of facturas) {
-      if (Number(f["Year"]) !== currentYear) continue;
+      const year = Number(f["Year"]);
       const id = ((f["ID Cliente"] as string) || "").trim();
-      if (!id) continue;
-      topClientMap.set(id, (topClientMap.get(id) ?? 0) + (Number(f["BaseListado"]) || 0));
+      const amount = Number(f["BaseListado"]) || 0;
+      if (!year || !id || amount === 0) continue;
+      if (!topClientByYear.has(year)) topClientByYear.set(year, new Map());
+      const ym = topClientByYear.get(year)!;
+      ym.set(id, (ym.get(id) ?? 0) + amount);
     }
-    const topClientes = Array.from(topClientMap.entries())
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([id, total]) => ({
-        nombre: clientMap.get(id)?.nombre ?? "—",
-        sector: clientMap.get(id)?.sector ?? "—",
-        facturacion: Math.round(total),
-      }));
+    const topClientes: Record<number, { nombre: string; sector: string; facturacion: number }[]> = {};
+    topClientByYear.forEach((cm, year) => {
+      topClientes[year] = Array.from(cm.entries())
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 5)
+        .map(([id, total]) => ({
+          nombre: clientMap.get(id)?.nombre ?? "—",
+          sector: clientMap.get(id)?.sector ?? "—",
+          facturacion: Math.round(total),
+        }));
+    });
+
+    // ── Top proyectos per year ────────────────────────────────
+    const topProyByYear = new Map<number, { nombre: string; cliente: string; importe: number; estado: string }[]>();
+    for (const p of proyectos) {
+      const year = Number(p["Year"]);
+      if (!year) continue;
+      const importe = Number(p["TFactura"]) || 0;
+      const clienteId = ((p["ID Cliente"] as string) || "").trim();
+      topProyByYear.set(year, [
+        ...(topProyByYear.get(year) ?? []),
+        {
+          nombre: ((p["Nombre proyecto"] as string) || "—").trim(),
+          cliente: clientMap.get(clienteId)?.nombre ?? "—",
+          importe: Math.round(importe),
+          estado: ((p["Estado"] as string) || "—").trim(),
+        },
+      ]);
+    }
+    const topProyectos: Record<number, { nombre: string; cliente: string; importe: number; estado: string }[]> = {};
+    topProyByYear.forEach((list, year) => {
+      topProyectos[year] = list
+        .filter(p => p.importe > 0)
+        .sort((a, b) => b.importe - a.importe)
+        .slice(0, 5);
+    });
 
     const añosSet: number[] = [];
     vmMap.forEach((_, y) => { if (!añosSet.includes(y)) añosSet.push(y); });
     const años = añosSet.sort((a, b) => a - b);
 
-    return NextResponse.json({ ventasMargen, feeCv, proyectosMes, sectores, topClientes, años, currentYear });
+    return NextResponse.json({ ventasMargen, feeCv, proyectosMes, sectores, topClientes, topProyectos, años, currentYear });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 500 });

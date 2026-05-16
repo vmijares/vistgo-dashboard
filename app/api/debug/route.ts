@@ -21,13 +21,21 @@ function fmFetch(url: string, token: string): Promise<{ status: number; body: st
   });
 }
 
-async function q(server: string, db: string, token: string, path: string) {
-  const url = `${server}/fmi/odata/v4/${encodeURIComponent(db)}/${path}`;
+async function peek(server: string, db: string, token: string, table: string, extra = "") {
+  const encoded = encodeURIComponent(table);
+  const url = `${server}/fmi/odata/v4/${encodeURIComponent(db)}/${encoded}?$top=2${extra}`;
   try {
     const res = await fmFetch(url, token);
     const fixed = res.body.replace(/-\.(\d)/g, "-0.$1");
     if (res.status !== 200) return { status: res.status, error: res.body.slice(0, 300) };
-    return { status: res.status, data: JSON.parse(fixed) };
+    const data = JSON.parse(fixed);
+    const records = data.value ?? [data];
+    return {
+      status: res.status,
+      count: records.length,
+      keys: records[0] ? Object.keys(records[0]) : [],
+      samples: records,
+    };
   } catch (e) { return { error: String(e) }; }
 }
 
@@ -36,14 +44,11 @@ export async function GET() {
   const db = process.env.FM_DATABASE ?? "";
   const token = `Basic ${Buffer.from(`${process.env.FM_USER}:${process.env.FM_PASS}`).toString("base64")}`;
 
-  const [applyTest, serviceDoc, clientePeek] = await Promise.all([
-    // Test $apply aggregation
-    q(server, db, token, "Factura?%24apply=groupby((Year),aggregate(BaseListado%20with%20sum%20as%20Ventas,MargenListado%20with%20sum%20as%20Margen))&%24orderby=Year%20asc"),
-    // OData service doc — lists all tables
-    q(server, db, token, ""),
-    // Peek at Cliente table for sector field
-    q(server, db, token, "Cliente?%24top=1"),
+  const [sectores, clientesGraficos, clientes] = await Promise.all([
+    peek(server, db, token, "ProyectosSectoresCliente"),
+    peek(server, db, token, "ClientesGraficos"),
+    peek(server, db, token, "Clientes", "&%24select=Nombre%2CSector%2CTipo"),
   ]);
 
-  return NextResponse.json({ applyTest, serviceDoc, clientePeek });
+  return NextResponse.json({ sectores, clientesGraficos, clientes });
 }

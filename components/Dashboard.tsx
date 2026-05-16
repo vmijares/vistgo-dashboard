@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, Legend,
@@ -21,10 +21,13 @@ const C = {
 
 // ── Props interface ───────────────────────────────────────────
 interface DashboardProps {
-  facturacionMargen: { año: string; ventas: number; margen: number; pct: number }[];
-  feeCvData: { año: string; fee: number; cv: number }[];
-  monthlyProjects: number[]; // 12 values, Jan-Dec
-  sectorData: { sector: string; importe: number }[];
+  ventasMargen: { año: number; ventas: number; margen: number; pct: number }[];
+  feeCv: { año: number; fee: number; cv: number }[];
+  proyectosMes: Record<number, number[]>;
+  sectores: Record<number, Record<string, number>>;
+  topClientes: { nombre: string; sector: string; facturacion: number }[];
+  años: number[];
+  currentYear: number;
   onLogout: () => void;
 }
 
@@ -39,15 +42,7 @@ const VistgoLogo = ({ size = 32 }: { size?: number }) => (
   </svg>
 );
 
-// ── Mock data for tables (demo) ───────────────────────────────
-const topClientes = [
-  { nombre: "Inditex Group",      sector: "Retail moda",   facturacion: 890000, proyectos: 12 },
-  { nombre: "Puig",               sector: "Retail cosm.",  facturacion: 620000, proyectos: 8  },
-  { nombre: "Mediapro",           sector: "Señalización",  facturacion: 480000, proyectos: 6  },
-  { nombre: "Mercadona",          sector: "Retail alim.",  facturacion: 340000, proyectos: 5  },
-  { nombre: "Catalana Occidente", sector: "Seguros",       facturacion: 280000, proyectos: 4  },
-];
-
+// ── Mock data for top projects (demo) ─────────────────────────
 const topProyectos = [
   { nombre: "Señalización HQ Inditex",  cliente: "Inditex Group",  importe: 320000, estado: "Terminado"     },
   { nombre: "Retail Puig Paris",         cliente: "Puig",           importe: 280000, estado: "En ejecución" },
@@ -145,7 +140,7 @@ const STitle = ({ title, sub }: { title: string; sub?: string }) => (
 const YearPill = ({
   value, options, onChange,
 }: {
-  value: string; options: string[]; onChange: (y: string) => void;
+  value: number; options: number[]; onChange: (y: number) => void;
 }) => (
   <div style={{ display: "flex", gap: 4 }}>
     {options.map(y => (
@@ -169,42 +164,62 @@ const Badge = ({ text, color }: { text: string; color: string }) => (
 
 // ── MAIN ──────────────────────────────────────────────────────
 export default function Dashboard({
-  facturacionMargen,
-  feeCvData,
-  monthlyProjects,
-  sectorData,
+  ventasMargen,
+  feeCv,
+  proyectosMes,
+  sectores,
+  topClientes,
+  años,
+  currentYear,
   onLogout,
 }: DashboardProps) {
-  // Year pills for monthly projects — since we have one dataset, show all years available
-  const availableYears = facturacionMargen.map(d => d.año);
-  const lastYear = availableYears[availableYears.length - 1] ?? "";
-  const [yearEjec, setYearEjec] = useState(lastYear);
+  const [yearEjec, setYearEjec] = useState<number>(0);
+  const [yearSect, setYearSect] = useState<number>(0);
 
-  const last = facturacionMargen[facturacionMargen.length - 1];
-  const prev = facturacionMargen[facturacionMargen.length - 2];
+  // Initialize year selectors when años prop arrives
+  useEffect(() => {
+    if (años.length > 0) {
+      setYearEjec(años[años.length - 1]);
+      setYearSect(años[años.length - 1]);
+    }
+  }, [años]);
+
+  const last = ventasMargen[ventasMargen.length - 1];
+  const prev = ventasMargen[ventasMargen.length - 2];
 
   const deltaV =
     prev && prev.ventas > 0
       ? (((last.ventas - prev.ventas) / prev.ventas) * 100).toFixed(1)
       : "—";
 
-  const totalEjec = monthlyProjects.reduce((a, b) => a + b, 0);
+  const totalEjec = yearEjec ? (proyectosMes[yearEjec] ?? []).reduce((a, b) => a + b, 0) : 0;
 
-  // Monthly projects data (one dataset from FM — shown for any selected year)
+  // For recharts, año must be string
+  const vmData = ventasMargen.map(d => ({ ...d, año: String(d.año) }));
+  const feeCvData = feeCv.map(d => ({ ...d, año: String(d.año) }));
+
   const dataEjec = MESES_CORTO.map((mes, i) => ({
-    mes, proyectos: monthlyProjects[i] ?? 0,
+    mes, proyectos: yearEjec ? (proyectosMes[yearEjec]?.[i] ?? 0) : 0,
   }));
 
-  // Sector data comes from props, already sorted
-  const dataSect = sectorData;
+  const dataSect = yearSect && sectores[yearSect]
+    ? Object.entries(sectores[yearSect])
+        .map(([sector, importe]) => ({ sector, importe }))
+        .filter(d => d.importe > 0)
+        .sort((a, b) => b.importe - a.importe)
+        .slice(0, 8)
+    : [];
 
-  const maxCliente = Math.max(...topClientes.map(c => c.facturacion));
+  const maxCliente = Math.max(...topClientes.map(c => c.facturacion), 1);
 
-  // Margin average across all years
+  // Average margin across all years
   const avgMargen =
-    facturacionMargen.length > 0
-      ? (facturacionMargen.reduce((a, d) => a + d.pct, 0) / facturacionMargen.length).toFixed(1)
+    ventasMargen.length > 0
+      ? (ventasMargen.reduce((a, d) => a + d.pct, 0) / ventasMargen.length).toFixed(1)
       : "—";
+
+  // Top cliente KPI
+  const topCliente = topClientes[0];
 
   return (
     <div style={{
@@ -256,14 +271,14 @@ export default function Dashboard({
         <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
           <KPI
             icon="💶"
-            label={`Facturación ${last?.año ?? ""}`}
+            label={`Facturación ${last?.año ?? currentYear}`}
             value={fmtEur(last?.ventas)}
             sub={deltaV !== "—" ? `${deltaV}% vs ${prev?.año}` : "Primer año"}
             accent={deltaV !== "—" && Number(deltaV) >= 0 ? C.lime : C.red}
           />
           <KPI
             icon="📈"
-            label={`Margen bruto ${last?.año ?? ""}`}
+            label={`Margen bruto ${last?.año ?? currentYear}`}
             value={`${last?.pct ?? 0}%`}
             sub="Margen año actual"
             accent={C.lime}
@@ -272,19 +287,19 @@ export default function Dashboard({
             icon="🗂"
             label="Proyectos ejecutados"
             value={totalEjec}
-            sub={`datos del último cierre`}
+            sub={yearEjec ? `datos ${yearEjec}` : "datos del último cierre"}
             accent={C.lime2}
           />
           <KPI
             icon="🏆"
-            label="Top cliente (demo)"
-            value="Inditex"
-            sub="890K€ · 12 proyectos"
+            label={`Top cliente ${currentYear}`}
+            value={topCliente ? topCliente.nombre.split(" ")[0] : "—"}
+            sub={topCliente ? `${fmtEur(topCliente.facturacion)} · ${topCliente.sector}` : "Sin datos"}
             accent={C.purple}
           />
           <KPI
             icon="⭐"
-            label={`Margen acumulado ${facturacionMargen.length}a`}
+            label={`Margen acumulado ${ventasMargen.length}a`}
             value={`~${avgMargen}%`}
             sub="Media histórica"
             accent={C.lime}
@@ -297,11 +312,11 @@ export default function Dashboard({
           {/* Facturación y margen */}
           <Card style={{ margin: 0 }}>
             <STitle
-              title={`Facturación y margen · ${facturacionMargen.length} años`}
+              title={`Facturación y margen · ${ventasMargen.length} años`}
               sub="Ventas totales vs margen bruto"
             />
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={facturacionMargen} barGap={3}>
+              <BarChart data={vmData} barGap={3}>
                 <CartesianGrid strokeDasharray="3 3" stroke={`${C.muted}22`} vertical={false} />
                 <XAxis dataKey="año" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tickFormatter={fmt} tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -313,7 +328,7 @@ export default function Dashboard({
             </ResponsiveContainer>
             {/* % sparklines */}
             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
-              {facturacionMargen.map(d => (
+              {vmData.map(d => (
                 <div key={d.año} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ color: C.muted, fontSize: 11, fontWeight: 700, minWidth: 36 }}>{d.año}</span>
                   <div style={{ flex: 1, height: 4, borderRadius: 2, background: `${C.muted}22`, overflow: "hidden" }}>
@@ -330,41 +345,47 @@ export default function Dashboard({
             </div>
           </Card>
 
-          {/* Top Clientes — demo data */}
+          {/* Top Clientes — real FM data */}
           <Card style={{ margin: 0 }}>
-            <STitle title="Top 5 Clientes" sub="Datos de demostración" />
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {topClientes.map((c, i) => (
-                <div key={c.nombre}>
-                  <div style={{
-                    display: "flex", justifyContent: "space-between",
-                    alignItems: "center", marginBottom: 4,
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{
-                        width: 22, height: 22, borderRadius: "50%",
-                        background: i === 0 ? C.lime : `${C.lime}33`,
-                        color: i === 0 ? C.navy : C.lime,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 11, fontWeight: 800, flexShrink: 0,
-                      }}>{i + 1}</span>
-                      <div>
-                        <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: C.white }}>{c.nombre}</p>
-                        <p style={{ margin: 0, fontSize: 10, color: C.muted }}>{c.sector} · {c.proyectos} proyectos</p>
-                      </div>
-                    </div>
-                    <span style={{ color: C.lime, fontWeight: 800, fontSize: 13 }}>{fmtEur(c.facturacion)}</span>
-                  </div>
-                  <div style={{ height: 3, borderRadius: 2, background: `${C.muted}22`, overflow: "hidden" }}>
+            <STitle title="Top 5 Clientes" sub={`Facturación real ${currentYear} · FileMaker`} />
+            {topClientes.length === 0 ? (
+              <p style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: "40px 0" }}>
+                Sin datos de clientes disponibles
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {topClientes.map((c, i) => (
+                  <div key={`${c.nombre}-${i}`}>
                     <div style={{
-                      width: `${(c.facturacion / maxCliente) * 100}%`, height: "100%",
-                      background: `linear-gradient(90deg, ${C.lime}, ${C.lime2})`,
-                      borderRadius: 2, transition: "width 0.6s ease",
-                    }} />
+                      display: "flex", justifyContent: "space-between",
+                      alignItems: "center", marginBottom: 4,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{
+                          width: 22, height: 22, borderRadius: "50%",
+                          background: i === 0 ? C.lime : `${C.lime}33`,
+                          color: i === 0 ? C.navy : C.lime,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 11, fontWeight: 800, flexShrink: 0,
+                        }}>{i + 1}</span>
+                        <div>
+                          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: C.white }}>{c.nombre}</p>
+                          <p style={{ margin: 0, fontSize: 10, color: C.muted }}>{c.sector}</p>
+                        </div>
+                      </div>
+                      <span style={{ color: C.lime, fontWeight: 800, fontSize: 13 }}>{fmtEur(c.facturacion)}</span>
+                    </div>
+                    <div style={{ height: 3, borderRadius: 2, background: `${C.muted}22`, overflow: "hidden" }}>
+                      <div style={{
+                        width: `${(c.facturacion / maxCliente) * 100}%`, height: "100%",
+                        background: `linear-gradient(90deg, ${C.lime}, ${C.lime2})`,
+                        borderRadius: 2, transition: "width 0.6s ease",
+                      }} />
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
 
@@ -384,7 +405,7 @@ export default function Dashboard({
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
                 <YearPill
                   value={yearEjec}
-                  options={availableYears}
+                  options={años}
                   onChange={setYearEjec}
                 />
                 <span style={{
@@ -394,7 +415,7 @@ export default function Dashboard({
               </div>
             </div>
             <p style={{ color: `${C.muted}88`, fontSize: 10, margin: "0 0 10px", fontStyle: "italic" }}>
-              Datos del último cierre · año seleccionado: {yearEjec}
+              Datos FileMaker en tiempo real · año seleccionado: {yearEjec || "—"}
             </p>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={dataEjec} barSize={22}>
@@ -438,6 +459,13 @@ export default function Dashboard({
               alignItems: "flex-start", marginBottom: 16,
             }}>
               <STitle title="Facturación por sector" sub="Importe según cliente · datos FileMaker" />
+              <div style={{ flexShrink: 0 }}>
+                <YearPill
+                  value={yearSect}
+                  options={años}
+                  onChange={setYearSect}
+                />
+              </div>
             </div>
             {dataSect.length === 0 ? (
               <p style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: "40px 0" }}>
@@ -513,7 +541,7 @@ export default function Dashboard({
         }}>
           <VistgoLogo size={16} />
           <span style={{ color: `${C.muted}66`, fontSize: 10 }}>
-            Panel interno · Top clientes y proyectos: datos de demostración · Gráficas: datos FileMaker OData
+            Panel interno · Top proyectos: datos de demostración · Resto: datos FileMaker OData en tiempo real
           </span>
         </div>
       </div>

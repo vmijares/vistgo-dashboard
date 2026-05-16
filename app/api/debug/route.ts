@@ -21,31 +21,32 @@ function fmFetch(url: string, token: string): Promise<{ status: number; body: st
   });
 }
 
+async function peekTable(server: string, db: string, token: string, table: string) {
+  const url = `${server}/fmi/odata/v4/${encodeURIComponent(db)}/${encodeURIComponent(table)}?$top=1`;
+  try {
+    const res = await fmFetch(url, token);
+    if (res.status !== 200) return { error: `HTTP ${res.status}`, body: res.body.slice(0, 300) };
+    const fixed = res.body.replace(/-\.(\d)/g, "-0.$1");
+    const parsed = JSON.parse(fixed);
+    const record = parsed.value?.[0] ?? parsed;
+    return { keys: Object.keys(record), sample: record };
+  } catch (e) {
+    return { error: String(e) };
+  }
+}
+
 export async function GET() {
   const server = process.env.FM_SERVER ?? "";
   const db = process.env.FM_DATABASE ?? "";
   const user = process.env.FM_USER ?? "";
   const pass = process.env.FM_PASS ?? "";
-
   const token = `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
-  const url = `${server}/fmi/odata/v4/${encodeURIComponent(db)}/Graficas?$top=1`;
 
-  try {
-    const res = await fmFetch(url, token);
-    if (res.status !== 200) {
-      return NextResponse.json({ error: `FM HTTP ${res.status}`, rawBody: res.body.slice(0, 500) });
-    }
+  const [factura, presupuesto, proyEjec] = await Promise.all([
+    peekTable(server, db, token, "Factura"),
+    peekTable(server, db, token, "Presupuesto"),
+    peekTable(server, db, token, "ProyectosEjecutados"),
+  ]);
 
-    const fixed = res.body.replace(/-\.(\d)/g, "-0.$1");
-    const parsed = JSON.parse(fixed);
-    const record = parsed.value?.[0] ?? parsed;
-
-    const keyFields = ["Año","Año2","Año3","Año4","Año5","Ventas1","Ventas2","Ventas3","Ventas4","Ventas5","Margen1","Margen2","Margen3","Margen4","Margen5","PorSobre1","PorSobre2","FEE1","FEE2","CV1","CV2","Enero","Febrero","Marzo","Señalización Copia","Retail moda Copia"];
-    const values: Record<string, unknown> = {};
-    for (const k of keyFields) values[k] = record[k];
-
-    return NextResponse.json({ httpStatus: res.status, url, values, allKeys: Object.keys(record) });
-  } catch (e) {
-    return NextResponse.json({ error: String(e) });
-  }
+  return NextResponse.json({ factura, presupuesto, proyEjec });
 }

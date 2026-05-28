@@ -14,20 +14,27 @@ type MargenBajo  = {
   proyectos: { nombre: string; cliente: string; importe: number; margen: number }[];
 };
 
+type YtdTotals = {
+  current: { ventas: number; margen: number; pct: number };
+  prev:    { ventas: number; margen: number; pct: number };
+};
+
 type AppData = {
   ventasMargen: { año: number; ventas: number; margen: number; pct: number }[];
-  feeCv: { año: number; fee: number; cv: number }[];
-  proyectosMes:  Record<number, number[]>;
-  facturasMes:   Record<number, number[]>;
-  sectores:      Record<number, Record<string, number>>;
-  topClientes:   Record<number, TopCliente[]>;
-  allClientes:   Record<number, TopCliente[]>;
-  ytdClientes:   YtdCliente[];
-  topProyectos:  Record<number, TopProyecto[]>;
-  margenBajo:    MargenBajo;
-  años:          number[];
-  currentYear:   number;
-  todayMonth:    number;
+  feeCv:        { año: number; fee: number; cv: number }[];
+  proyectosMes: Record<number, number[]>;
+  facturasMes:  Record<number, number[]>;
+  margenMes:    Record<number, number[]>;
+  sectores:     Record<number, Record<string, number>>;
+  topClientes:  Record<number, TopCliente[]>;
+  allClientes:  Record<number, TopCliente[]>;
+  ytdClientes:  YtdCliente[];
+  ytdTotals:    YtdTotals;
+  topProyectos: Record<number, TopProyecto[]>;
+  margenBajo:   MargenBajo;
+  años:         number[];
+  currentYear:  number;
+  todayMonth:   number;
 };
 
 const C = { navyD: "#13152e", lime: "#b8c94a", muted: "#6b6f9a" };
@@ -78,10 +85,12 @@ export default function DashboardPage() {
       feeCv={data.feeCv}
       proyectosMes={data.proyectosMes}
       facturasMes={data.facturasMes}
+      margenMes={data.margenMes}
       sectores={data.sectores}
       topClientes={data.topClientes}
       allClientes={data.allClientes}
       ytdClientes={data.ytdClientes}
+      ytdTotals={data.ytdTotals}
       topProyectos={data.topProyectos}
       margenBajo={data.margenBajo}
       años={data.años}

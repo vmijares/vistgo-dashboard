@@ -135,15 +135,20 @@ export async function GET(req: NextRequest) {
 
     // ── Facturación por mes y año (€) ─────────────────────────
     const facMesMap = new Map<number, number[]>();
+    const marMesMap = new Map<number, number[]>();
     for (const f of facturas) {
       const year = Number(f["Year"]);
       const month = Number(f["Month"]);
       if (!year || !month) continue;
       if (!facMesMap.has(year)) facMesMap.set(year, new Array(12).fill(0));
+      if (!marMesMap.has(year)) marMesMap.set(year, new Array(12).fill(0));
       facMesMap.get(year)![month - 1] += Number(f["BaseListado"]) || 0;
+      marMesMap.get(year)![month - 1] += Number(f["MargenListado"]) || 0;
     }
     const facturasMes: Record<number, number[]> = {};
+    const margenMes:   Record<number, number[]> = {};
     facMesMap.forEach((arr, y) => { facturasMes[y] = arr.map(Math.round); });
+    marMesMap.forEach((arr, y) => { margenMes[y]   = arr.map(Math.round); });
 
     // ── Sectores per year ─────────────────────────────────────
     const sectorMapYear = new Map<number, Map<string, number>>();
@@ -222,6 +227,35 @@ export async function GET(req: NextRequest) {
         margenAnterior: Math.round(d.margenAnt),
       }));
 
+    // ── YTD totales (ventas + margen) — para KPIs comparativa ─
+    const ytdTotalsRaw = {
+      current: { ventas: 0, margen: 0 },
+      prev:    { ventas: 0, margen: 0 },
+    };
+    for (const f of facturas) {
+      const year  = Number(f["Year"]);
+      const month = Number(f["Month"]);
+      if (!month || month > todayMonth) continue;
+      const base = Number(f["BaseListado"])  || 0;
+      const marg = Number(f["MargenListado"]) || 0;
+      if (year === currentYear)         { ytdTotalsRaw.current.ventas += base; ytdTotalsRaw.current.margen += marg; }
+      else if (year === currentYear - 1){ ytdTotalsRaw.prev.ventas    += base; ytdTotalsRaw.prev.margen    += marg; }
+    }
+    const ytdTotals = {
+      current: {
+        ventas: Math.round(ytdTotalsRaw.current.ventas),
+        margen: Math.round(ytdTotalsRaw.current.margen),
+        pct:    ytdTotalsRaw.current.ventas > 0
+          ? Number(((ytdTotalsRaw.current.margen / ytdTotalsRaw.current.ventas) * 100).toFixed(2)) : 0,
+      },
+      prev: {
+        ventas: Math.round(ytdTotalsRaw.prev.ventas),
+        margen: Math.round(ytdTotalsRaw.prev.margen),
+        pct:    ytdTotalsRaw.prev.ventas > 0
+          ? Number(((ytdTotalsRaw.prev.margen / ytdTotalsRaw.prev.ventas) * 100).toFixed(2)) : 0,
+      },
+    };
+
     // ── Top proyectos per year ────────────────────────────────
     const topProyByYear = new Map<number, { nombre: string; cliente: string; importe: number; estado: string }[]>();
     for (const p of proyectos) {
@@ -247,13 +281,14 @@ export async function GET(req: NextRequest) {
         .slice(0, 5);
     });
 
-    // ── Proyectos con margen < 25% (año actual) ───────────────
+    // ── Proyectos con margen < 25% (año actual, solo terminados) ─
     const margenBajoList = proyectos
       .filter(p =>
         Number(p["Year"]) === currentYear &&
         Number(p["% margen"]) > 0 &&
         Number(p["% margen"]) < 25 &&
-        Number(p["TFactura"]) > 0
+        Number(p["TFactura"]) > 0 &&
+        (p["Estado"] === "Terminado y facturado" || p["Estado"] === "Terminado")
       )
       .map(p => ({
         nombre: ((p["Nombre proyecto"] as string) || "—").trim(),
@@ -275,8 +310,8 @@ export async function GET(req: NextRequest) {
     const años = añosSet.sort((a, b) => a - b);
 
     const result = {
-      ventasMargen, feeCv, proyectosMes, facturasMes,
-      sectores, topClientes, allClientes, ytdClientes,
+      ventasMargen, feeCv, proyectosMes, facturasMes, margenMes,
+      sectores, topClientes, allClientes, ytdClientes, ytdTotals,
       topProyectos, margenBajo, años, currentYear, todayMonth,
     };
 

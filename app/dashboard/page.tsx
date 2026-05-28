@@ -2,18 +2,32 @@
 import { useEffect, useState } from "react";
 import Dashboard from "@/components/Dashboard";
 
-type TopCliente = { nombre: string; sector: string; facturacion: number };
+type TopCliente  = { nombre: string; sector: string; facturacion: number };
 type TopProyecto = { nombre: string; cliente: string; importe: number; estado: string };
+type YtdCliente  = {
+  nombre: string; sector: string;
+  ytdActual: number; margenActual: number;
+  ytdAnterior: number; margenAnterior: number;
+};
+type MargenBajo  = {
+  count: number; total: number;
+  proyectos: { nombre: string; cliente: string; importe: number; margen: number }[];
+};
 
 type AppData = {
   ventasMargen: { año: number; ventas: number; margen: number; pct: number }[];
   feeCv: { año: number; fee: number; cv: number }[];
-  proyectosMes: Record<number, number[]>;
-  sectores: Record<number, Record<string, number>>;
-  topClientes: Record<number, TopCliente[]>;
-  topProyectos: Record<number, TopProyecto[]>;
-  años: number[];
-  currentYear: number;
+  proyectosMes:  Record<number, number[]>;
+  facturasMes:   Record<number, number[]>;
+  sectores:      Record<number, Record<string, number>>;
+  topClientes:   Record<number, TopCliente[]>;
+  allClientes:   Record<number, TopCliente[]>;
+  ytdClientes:   YtdCliente[];
+  topProyectos:  Record<number, TopProyecto[]>;
+  margenBajo:    MargenBajo;
+  años:          number[];
+  currentYear:   number;
+  todayMonth:    number;
 };
 
 const C = { navyD: "#13152e", lime: "#b8c94a", muted: "#6b6f9a" };
@@ -63,11 +77,16 @@ export default function DashboardPage() {
       ventasMargen={data.ventasMargen}
       feeCv={data.feeCv}
       proyectosMes={data.proyectosMes}
+      facturasMes={data.facturasMes}
       sectores={data.sectores}
       topClientes={data.topClientes}
+      allClientes={data.allClientes}
+      ytdClientes={data.ytdClientes}
       topProyectos={data.topProyectos}
+      margenBajo={data.margenBajo}
       años={data.años}
       currentYear={data.currentYear}
+      todayMonth={data.todayMonth}
       onLogout={() => { sessionStorage.removeItem("fm_auth"); window.location.href = "/login"; }}
     />
   );

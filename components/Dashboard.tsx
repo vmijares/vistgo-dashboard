@@ -13,26 +13,41 @@ const C = {
   lime:   "#b8c94a",
   lime2:  "#cede6a",
   purple: "#4a2d8a",
+  lila:   "#8b5cf6",   // violeta vibrante — barras de margen/CV
   muted:  "#6b6f9a",
   white:  "#f0f1ff",
-  red:    "#e05a5a",
+  red:    "#e05a5a",   // badges activos, deltas negativos, alertas
   green:  "#4ade80",
 };
 
-// ── Props interface ───────────────────────────────────────────
-interface TopCliente { nombre: string; sector: string; facturacion: number }
+// ── Types ─────────────────────────────────────────────────────
+interface TopCliente  { nombre: string; sector: string; facturacion: number }
 interface TopProyecto { nombre: string; cliente: string; importe: number; estado: string }
+interface YtdCliente  {
+  nombre: string; sector: string;
+  ytdActual: number; margenActual: number;
+  ytdAnterior: number; margenAnterior: number;
+}
+interface MargenBajo  {
+  count: number; total: number;
+  proyectos: { nombre: string; cliente: string; importe: number; margen: number }[];
+}
 
 interface DashboardProps {
-  ventasMargen: { año: number; ventas: number; margen: number; pct: number }[];
-  feeCv: { año: number; fee: number; cv: number }[];
-  proyectosMes: Record<number, number[]>;
-  sectores: Record<number, Record<string, number>>;
-  topClientes: Record<number, TopCliente[]>;
-  topProyectos: Record<number, TopProyecto[]>;
-  años: number[];
-  currentYear: number;
-  onLogout: () => void;
+  ventasMargen:  { año: number; ventas: number; margen: number; pct: number }[];
+  feeCv:         { año: number; fee: number; cv: number }[];
+  proyectosMes:  Record<number, number[]>;
+  facturasMes:   Record<number, number[]>;
+  sectores:      Record<number, Record<string, number>>;
+  topClientes:   Record<number, TopCliente[]>;
+  allClientes:   Record<number, TopCliente[]>;
+  ytdClientes:   YtdCliente[];
+  topProyectos:  Record<number, TopProyecto[]>;
+  margenBajo:    MargenBajo;
+  años:          number[];
+  currentYear:   number;
+  todayMonth:    number;
+  onLogout:      () => void;
 }
 
 // ── Logo SVG ──────────────────────────────────────────────────
@@ -46,8 +61,8 @@ const VistgoLogo = ({ size = 32 }: { size?: number }) => (
   </svg>
 );
 
-
-const MESES_CORTO = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const MESES_CORTO  = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const MESES_NOMBRE = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
 // ── Helpers ───────────────────────────────────────────────────
 const fmt = (v: number | string | undefined) => {
@@ -58,20 +73,15 @@ const fmt = (v: number | string | undefined) => {
   return String(n);
 };
 const fmtEur = (v: number | string | undefined) => `${fmt(v)}€`;
+const deltaColor = (d: string | number) => Number(d) >= 0 ? C.lime : C.red;
+const deltaSign  = (d: string | number) => Number(d) >= 0 ? "▲" : "▼";
 
 // ── Tooltip ───────────────────────────────────────────────────
-interface TooltipPayloadItem {
-  color: string;
-  name: string;
-  value: number;
-}
+interface TooltipPayloadItem { color: string; name: string; value: number }
 const CustomTooltip = ({
   active, payload, label, isEur = true,
 }: {
-  active?: boolean;
-  payload?: TooltipPayloadItem[];
-  label?: string;
-  isEur?: boolean;
+  active?: boolean; payload?: TooltipPayloadItem[]; label?: string; isEur?: boolean;
 }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -101,19 +111,12 @@ const KPI = ({
     borderTop: `3px solid ${accent || C.lime}`,
     flex: "1 1 160px", minWidth: 140, position: "relative", overflow: "hidden",
   }}>
-    <div style={{ position: "absolute", top: 10, right: 14, fontSize: 20, opacity: 0.15 }}>
-      {icon}
-    </div>
-    <p style={{
-      color: C.muted, fontSize: 10, textTransform: "uppercase",
-      letterSpacing: 1.2, margin: 0, fontWeight: 600,
-    }}>{label}</p>
-    <p style={{ color: C.white, fontSize: 26, fontWeight: 800, margin: "6px 0 2px", lineHeight: 1 }}>
-      {value}
+    <div style={{ position: "absolute", top: 10, right: 14, fontSize: 20, opacity: 0.15 }}>{icon}</div>
+    <p style={{ color: C.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, margin: 0, fontWeight: 600 }}>
+      {label}
     </p>
-    {sub && (
-      <p style={{ color: accent || C.lime, fontSize: 11, margin: 0, fontWeight: 500 }}>{sub}</p>
-    )}
+    <p style={{ color: C.white, fontSize: 26, fontWeight: 800, margin: "6px 0 2px", lineHeight: 1 }}>{value}</p>
+    {sub && <p style={{ color: accent || C.lime, fontSize: 11, margin: 0, fontWeight: 500 }}>{sub}</p>}
   </div>
 );
 
@@ -125,10 +128,9 @@ const Card = ({ children, style }: { children: React.ReactNode; style?: React.CS
 
 const STitle = ({ title, sub }: { title: string; sub?: string }) => (
   <div style={{ marginBottom: 18 }}>
-    <h2 style={{
-      color: C.white, fontSize: 13, fontWeight: 700,
-      margin: 0, textTransform: "uppercase", letterSpacing: 0.8,
-    }}>{title}</h2>
+    <h2 style={{ color: C.white, fontSize: 13, fontWeight: 700, margin: 0, textTransform: "uppercase", letterSpacing: 0.8 }}>
+      {title}
+    </h2>
     {sub && <p style={{ color: C.muted, fontSize: 11, margin: "3px 0 0" }}>{sub}</p>}
   </div>
 );
@@ -151,24 +153,12 @@ const YearPill = ({
   </div>
 );
 
-const Badge = ({ text, color }: { text: string; color: string }) => (
-  <span style={{
-    background: `${color}22`, color, borderRadius: 20,
-    padding: "2px 10px", fontSize: 10, fontWeight: 700,
-  }}>{text}</span>
-);
-
 // ── MAIN ──────────────────────────────────────────────────────
 export default function Dashboard({
-  ventasMargen,
-  feeCv,
-  proyectosMes,
-  sectores,
-  topClientes,
-  topProyectos,
-  años,
-  currentYear,
-  onLogout,
+  ventasMargen, feeCv, proyectosMes, facturasMes,
+  sectores, topClientes, allClientes, ytdClientes,
+  topProyectos, margenBajo,
+  años, currentYear, todayMonth, onLogout,
 }: DashboardProps) {
   const [selectedYear, setSelectedYear] = useState<number>(0);
 
@@ -176,21 +166,39 @@ export default function Dashboard({
     if (años.length > 0) setSelectedYear(años[años.length - 1]);
   }, [años]);
 
-  const last = ventasMargen[ventasMargen.length - 1];
-  const prev = ventasMargen[ventasMargen.length - 2];
+  // ── KPI deltas ───────────────────────────────────────────────
+  const curVm  = ventasMargen.find(d => d.año === selectedYear);
+  const prevVm = ventasMargen.find(d => d.año === selectedYear - 1);
 
-  const deltaV =
-    prev && prev.ventas > 0
-      ? (((last.ventas - prev.ventas) / prev.ventas) * 100).toFixed(1)
-      : "—";
+  const deltaV = prevVm && prevVm.ventas > 0 && curVm
+    ? (((curVm.ventas - prevVm.ventas) / prevVm.ventas) * 100).toFixed(1) : "—";
+  const deltaM = prevVm && curVm
+    ? (curVm.pct - prevVm.pct).toFixed(1) : "—";
 
   const totalEjec = selectedYear ? (proyectosMes[selectedYear] ?? []).reduce((a, b) => a + b, 0) : 0;
+  const prevEjec  = selectedYear ? (proyectosMes[selectedYear - 1] ?? []).reduce((a, b) => a + b, 0) : 0;
+  const deltaEjec = prevEjec > 0
+    ? (((totalEjec - prevEjec) / prevEjec) * 100).toFixed(1) : "—";
 
-  const vmData = ventasMargen.map(d => ({ ...d, año: String(d.año) }));
+  const clientesAño: TopCliente[] = selectedYear ? (topClientes[selectedYear] ?? []) : [];
+  const topCliente = clientesAño[0];
+  const topClientePrev = selectedYear ? (topClientes[selectedYear - 1] ?? [])[0] : undefined;
+  const deltaTopC = topCliente && topClientePrev && topClientePrev.facturacion > 0
+    ? (((topCliente.facturacion - topClientePrev.facturacion) / topClientePrev.facturacion) * 100).toFixed(1) : "—";
+
+  const avgMargen = ventasMargen.length > 0
+    ? (ventasMargen.reduce((a, d) => a + d.pct, 0) / ventasMargen.length).toFixed(1) : "—";
+
+  // ── Chart data ───────────────────────────────────────────────
+  const vmData    = ventasMargen.map(d => ({ ...d, año: String(d.año) }));
   const feeCvData = feeCv.map(d => ({ ...d, año: String(d.año) }));
 
   const dataEjec = MESES_CORTO.map((mes, i) => ({
     mes, proyectos: selectedYear ? (proyectosMes[selectedYear]?.[i] ?? 0) : 0,
+  }));
+
+  const dataFacMes = MESES_CORTO.map((mes, i) => ({
+    mes, importe: selectedYear ? (facturasMes[selectedYear]?.[i] ?? 0) : 0,
   }));
 
   const dataSect = selectedYear && sectores[selectedYear]
@@ -201,16 +209,12 @@ export default function Dashboard({
         .slice(0, 8)
     : [];
 
-  const clientesAño: TopCliente[] = selectedYear ? (topClientes[selectedYear] ?? []) : [];
-  const proyectosAño: TopProyecto[] = selectedYear ? (topProyectos[selectedYear] ?? []) : [];
-  const maxCliente = Math.max(...clientesAño.map(c => c.facturacion), 1);
+  const allClientesAño: TopCliente[] = selectedYear ? (allClientes[selectedYear] ?? []) : [];
+  const topClientesChart = allClientesAño.slice(0, 15);
+  const maxClienteAll = Math.max(...topClientesChart.map(c => c.facturacion), 1);
 
-  const avgMargen =
-    ventasMargen.length > 0
-      ? (ventasMargen.reduce((a, d) => a + d.pct, 0) / ventasMargen.length).toFixed(1)
-      : "—";
-
-  const topCliente = clientesAño[0];
+  // suppress unused warning for topProyectos (kept in props for future use)
+  void topProyectos;
 
   return (
     <div style={{
@@ -234,7 +238,6 @@ export default function Dashboard({
           <p style={{ margin: 0, fontSize: 10, color: C.muted }}>brand implementation experts</p>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
-          {/* Global year selector */}
           {años.length > 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: C.muted, fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Año</span>
@@ -243,24 +246,14 @@ export default function Dashboard({
           )}
           <div style={{ width: 1, height: 20, background: `${C.muted}33` }} />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{
-              width: 8, height: 8, borderRadius: "50%",
-              background: C.lime, boxShadow: `0 0 6px ${C.lime}`,
-            }} />
-            <span style={{ color: C.muted, fontSize: 11 }}>
-              Live · {new Date().toLocaleDateString("es-ES")}
-            </span>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.lime, boxShadow: `0 0 6px ${C.lime}` }} />
+            <span style={{ color: C.muted, fontSize: 11 }}>Live · {new Date().toLocaleDateString("es-ES")}</span>
           </div>
-          <button
-            onClick={onLogout}
-            style={{
-              background: "transparent", border: `1px solid ${C.muted}44`,
-              borderRadius: 8, padding: "5px 12px", color: C.muted,
-              fontSize: 11, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
-            }}
-          >
-            Salir
-          </button>
+          <button onClick={onLogout} style={{
+            background: "transparent", border: `1px solid ${C.muted}44`,
+            borderRadius: 8, padding: "5px 12px", color: C.muted,
+            fontSize: 11, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+          }}>Salir</button>
         </div>
       </div>
 
@@ -270,31 +263,41 @@ export default function Dashboard({
         <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
           <KPI
             icon="💶"
-            label={`Facturación ${last?.año ?? currentYear}`}
-            value={fmtEur(last?.ventas)}
-            sub={deltaV !== "—" ? `${deltaV}% vs ${prev?.año}` : "Primer año"}
-            accent={deltaV !== "—" && Number(deltaV) >= 0 ? C.lime : C.red}
+            label={`Facturación ${selectedYear || currentYear}`}
+            value={fmtEur(curVm?.ventas)}
+            sub={deltaV !== "—"
+              ? `${deltaSign(deltaV)} ${Math.abs(Number(deltaV))}% vs ${selectedYear - 1}`
+              : "Primer año"}
+            accent={deltaV !== "—" ? deltaColor(deltaV) : C.lime}
           />
           <KPI
             icon="📈"
-            label={`Margen bruto ${last?.año ?? currentYear}`}
-            value={`${last?.pct ?? 0}%`}
-            sub="Margen año actual"
-            accent={C.lime}
+            label={`Margen bruto ${selectedYear || currentYear}`}
+            value={`${curVm?.pct ?? 0}%`}
+            sub={deltaM !== "—"
+              ? `${deltaSign(deltaM)} ${Math.abs(Number(deltaM))}pp vs ${selectedYear - 1}`
+              : "Sin comparativa"}
+            accent={deltaM !== "—" ? deltaColor(deltaM) : C.lime}
           />
           <KPI
             icon="🗂"
             label="Proyectos ejecutados"
             value={totalEjec}
-            sub={selectedYear ? `datos ${selectedYear}` : "datos del último cierre"}
-            accent={C.lime2}
+            sub={deltaEjec !== "—"
+              ? `${deltaSign(deltaEjec)} ${Math.abs(Number(deltaEjec))}% vs ${selectedYear - 1}`
+              : selectedYear ? `datos ${selectedYear}` : ""}
+            accent={deltaEjec !== "—" ? deltaColor(deltaEjec) : C.lime2}
           />
           <KPI
             icon="🏆"
             label={`Top cliente ${selectedYear || currentYear}`}
             value={topCliente ? topCliente.nombre.split(" ")[0] : "—"}
-            sub={topCliente ? `${fmtEur(topCliente.facturacion)} · ${topCliente.sector}` : "Sin datos"}
-            accent={C.purple}
+            sub={topCliente
+              ? deltaTopC !== "—"
+                ? `${fmtEur(topCliente.facturacion)} · ${deltaSign(deltaTopC)}${Math.abs(Number(deltaTopC))}% vs ${selectedYear - 1}`
+                : `${fmtEur(topCliente.facturacion)} · ${topCliente.sector}`
+              : "Sin datos"}
+            accent={C.red}
           />
           <KPI
             icon="⭐"
@@ -305,10 +308,10 @@ export default function Dashboard({
           />
         </div>
 
-        {/* ── ROW 1: Facturación + Top Clientes ── */}
+        {/* ── ROW 1: Facturación histórica + Facturación mensual ── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }}>
 
-          {/* Facturación y margen */}
+          {/* Facturación y margen histórico */}
           <Card style={{ margin: 0 }}>
             <STitle
               title={`Facturación y margen · ${ventasMargen.length} años`}
@@ -321,8 +324,8 @@ export default function Dashboard({
                 <YAxis tickFormatter={fmt} tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
-                <Bar dataKey="ventas" name="Ventas" fill={C.lime} radius={[4, 4, 0, 0]} maxBarSize={40} />
-                <Bar dataKey="margen" name="Margen" fill={C.red} radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="ventas" name="Ventas" fill={C.lime}  radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="margen" name="Margen" fill={C.lila}  radius={[4, 4, 0, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer>
             {/* % sparklines */}
@@ -331,72 +334,48 @@ export default function Dashboard({
                 <div key={d.año} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ color: C.muted, fontSize: 11, fontWeight: 700, minWidth: 36 }}>{d.año}</span>
                   <div style={{ flex: 1, height: 4, borderRadius: 2, background: `${C.muted}22`, overflow: "hidden" }}>
-                    <div style={{
-                      width: `${d.pct}%`, height: "100%", background: C.lime,
-                      borderRadius: 2, transition: "width 0.6s ease",
-                    }} />
+                    <div style={{ width: `${d.pct}%`, height: "100%", background: C.lime, borderRadius: 2, transition: "width 0.6s ease" }} />
                   </div>
-                  <span style={{ color: C.lime, fontSize: 11, fontWeight: 700, minWidth: 40, textAlign: "right" }}>
-                    {d.pct}%
-                  </span>
+                  <span style={{ color: C.lime, fontSize: 11, fontWeight: 700, minWidth: 40, textAlign: "right" }}>{d.pct}%</span>
                 </div>
               ))}
             </div>
           </Card>
 
-          {/* Top Clientes — real FM data */}
+          {/* Facturación mensual (€) — reemplaza Top 5 Clientes */}
           <Card style={{ margin: 0 }}>
-            <STitle title="Top 5 Clientes" sub={`Facturación ${selectedYear || currentYear} · FileMaker`} />
-            {clientesAño.length === 0 ? (
-              <p style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: "40px 0" }}>
-                Sin datos de clientes para {selectedYear || currentYear}
-              </p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {clientesAño.map((c, i) => (
-                  <div key={`${c.nombre}-${i}`}>
-                    <div style={{
-                      display: "flex", justifyContent: "space-between",
-                      alignItems: "center", marginBottom: 4,
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{
-                          width: 22, height: 22, borderRadius: "50%",
-                          background: i === 0 ? C.lime : `${C.lime}33`,
-                          color: i === 0 ? C.navy : C.lime,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 11, fontWeight: 800, flexShrink: 0,
-                        }}>{i + 1}</span>
-                        <div>
-                          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: C.white }}>{c.nombre}</p>
-                          <p style={{ margin: 0, fontSize: 10, color: C.muted }}>{c.sector}</p>
-                        </div>
-                      </div>
-                      <span style={{ color: C.lime, fontWeight: 800, fontSize: 13 }}>{fmtEur(c.facturacion)}</span>
-                    </div>
-                    <div style={{ height: 3, borderRadius: 2, background: `${C.muted}22`, overflow: "hidden" }}>
-                      <div style={{
-                        width: `${(c.facturacion / maxCliente) * 100}%`, height: "100%",
-                        background: `linear-gradient(90deg, ${C.lime}, ${C.lime2})`,
-                        borderRadius: 2, transition: "width 0.6s ease",
-                      }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+              <STitle
+                title="Facturación mensual"
+                sub={`${selectedYear || "—"} · Importe facturado por mes`}
+              />
+              <span style={{
+                background: `${C.lime}22`, color: C.lime, borderRadius: 20,
+                padding: "2px 10px", fontSize: 11, fontWeight: 700, flexShrink: 0,
+              }}>{fmtEur(dataFacMes.reduce((s, d) => s + d.importe, 0))}</span>
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={dataFacMes} barSize={22}>
+                <CartesianGrid strokeDasharray="3 3" stroke={`${C.muted}22`} vertical={false} />
+                <XAxis dataKey="mes" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={fmt} tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="importe" name="Facturación" radius={[4, 4, 0, 0]}>
+                  {dataFacMes.map((d, i) => (
+                    <Cell key={i} fill={d.importe > 0 ? C.lime : `${C.muted}22`} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </Card>
         </div>
 
         {/* ── ROW 2: Proyectos mes + FEE CV ── */}
         <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 18, marginBottom: 18 }}>
 
-          {/* Proyectos ejecutados por mes */}
+          {/* Proyectos ejecutados por mes (count) */}
           <Card style={{ margin: 0 }}>
-            <div style={{
-              display: "flex", justifyContent: "space-between",
-              alignItems: "flex-start", marginBottom: 16,
-            }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
               <STitle
                 title="Proyectos ejecutados por mes"
                 sub={`${selectedYear || "—"} · Estado: En ejecución o Terminado y facturado`}
@@ -421,7 +400,7 @@ export default function Dashboard({
             </ResponsiveContainer>
           </Card>
 
-          {/* FEE y CV */}
+          {/* FEE y CV histórico */}
           <Card style={{ margin: 0 }}>
             <STitle title="FEE y CV · histórico" sub="Presupuestos facturados" />
             <ResponsiveContainer width="100%" height={220}>
@@ -432,20 +411,18 @@ export default function Dashboard({
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
                 <Bar dataKey="fee" name="FEE" fill={C.lime} radius={[4, 4, 0, 0]} maxBarSize={36} />
-                <Bar dataKey="cv" name="CV" fill={C.red} radius={[4, 4, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="cv"  name="CV"  fill={C.lila} radius={[4, 4, 0, 0]} maxBarSize={36} />
               </BarChart>
             </ResponsiveContainer>
           </Card>
         </div>
 
-        {/* ── ROW 3: Facturación sector + Top Proyectos ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+        {/* ── ROW 3: Sector + YTD vs año anterior ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 18 }}>
 
           {/* Facturación por sector */}
           <Card style={{ margin: 0 }}>
-            <div style={{ marginBottom: 16 }}>
-              <STitle title="Facturación por sector" sub={`${selectedYear || "—"} · Importe según cliente`} />
-            </div>
+            <STitle title="Facturación por sector" sub={`${selectedYear || "—"} · Importe según cliente`} />
             {dataSect.length === 0 ? (
               <p style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: "40px 0" }}>
                 Sin datos de sector disponibles
@@ -454,10 +431,8 @@ export default function Dashboard({
               <ResponsiveContainer width="100%" height={Math.max(220, dataSect.length * 28)}>
                 <BarChart data={dataSect} layout="vertical" barSize={14}>
                   <CartesianGrid strokeDasharray="3 3" stroke={`${C.muted}22`} horizontal={false} />
-                  <XAxis type="number" tickFormatter={fmt} tick={{ fill: C.muted, fontSize: 10 }}
-                    axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="sector" tick={{ fill: C.muted, fontSize: 10 }}
-                    axisLine={false} tickLine={false} width={90} />
+                  <XAxis type="number" tickFormatter={fmt} tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="sector" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} width={90} />
                   <Tooltip content={<CustomTooltip />} />
                   <Bar dataKey="importe" name="Facturación" radius={[0, 4, 4, 0]}>
                     {dataSect.map((d, i) => (
@@ -469,60 +444,199 @@ export default function Dashboard({
             )}
           </Card>
 
-          {/* Top Proyectos — real FM data */}
+          {/* YTD facturación + margen vs año anterior — reemplaza Top 5 Proyectos */}
           <Card style={{ margin: 0 }}>
-            <STitle title="Top 5 Proyectos" sub={`Por importe facturado · ${selectedYear || currentYear}`} />
-            {proyectosAño.length === 0 ? (
+            <STitle
+              title={`Facturación hasta ${MESES_NOMBRE[todayMonth - 1]}`}
+              sub={`Por cliente · ${currentYear} vs ${currentYear - 1} · mismas fechas`}
+            />
+            {ytdClientes.length === 0 ? (
               <p style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: "40px 0" }}>
-                Sin proyectos con importe para {selectedYear || currentYear}
+                Sin datos YTD disponibles
               </p>
-            ) : null}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {proyectosAño.map((p, i) => (
-                <div key={p.nombre} style={{
-                  display: "flex", justifyContent: "space-between",
-                  alignItems: "center", padding: "10px 14px",
-                  background: i === 0 ? `${C.lime}11` : `${C.muted}11`,
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 360, overflowY: "auto" }}>
+                {ytdClientes.map((c, i) => {
+                  const delta = c.ytdAnterior > 0
+                    ? (((c.ytdActual - c.ytdAnterior) / c.ytdAnterior) * 100).toFixed(1)
+                    : c.ytdActual > 0 ? "new" : "—";
+                  const margenPct = c.ytdActual > 0
+                    ? ((c.margenActual / c.ytdActual) * 100).toFixed(1) : "—";
+                  return (
+                    <div key={i} style={{
+                      padding: "10px 12px",
+                      background: i === 0 ? `${C.lime}0d` : `${C.muted}0a`,
+                      borderRadius: 10,
+                      border: `1px solid ${i === 0 ? C.lime + "33" : C.muted + "22"}`,
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                        <div>
+                          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: C.white }}>{c.nombre}</p>
+                          <p style={{ margin: 0, fontSize: 10, color: C.muted }}>{c.sector}</p>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <p style={{ margin: 0, color: C.lime, fontWeight: 800, fontSize: 13 }}>{fmtEur(c.ytdActual)}</p>
+                          {delta !== "—" && delta !== "new" && (
+                            <span style={{ fontSize: 10, color: deltaColor(delta), fontWeight: 700 }}>
+                              {deltaSign(delta)}{Math.abs(Number(delta))}% vs {currentYear - 1}
+                            </span>
+                          )}
+                          {delta === "new" && (
+                            <span style={{ fontSize: 10, color: C.lime2, fontWeight: 700 }}>Nuevo cliente</span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: "0 0 3px", fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8 }}>{currentYear}</p>
+                          <div style={{ height: 4, borderRadius: 2, background: `${C.muted}22` }}>
+                            <div style={{
+                              width: `${Math.min(100, (c.ytdActual / (ytdClientes[0]?.ytdActual || 1)) * 100)}%`,
+                              height: "100%", background: `linear-gradient(90deg,${C.lime},${C.lime2})`, borderRadius: 2,
+                            }} />
+                          </div>
+                        </div>
+                        {c.ytdAnterior > 0 && (
+                          <div style={{ flex: 1 }}>
+                            <p style={{ margin: "0 0 3px", fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8 }}>{currentYear - 1}</p>
+                            <div style={{ height: 4, borderRadius: 2, background: `${C.muted}22` }}>
+                              <div style={{
+                                width: `${Math.min(100, (c.ytdAnterior / (ytdClientes[0]?.ytdActual || 1)) * 100)}%`,
+                                height: "100%", background: `${C.muted}66`, borderRadius: 2,
+                              }} />
+                            </div>
+                          </div>
+                        )}
+                        {margenPct !== "—" && (
+                          <div style={{ flexShrink: 0, textAlign: "right" }}>
+                            <p style={{ margin: "0 0 3px", fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8 }}>Margen</p>
+                            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: Number(margenPct) >= 25 ? C.lime : C.red }}>
+                              {margenPct}%
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* ── ROW 4: Facturación año por cliente ── */}
+        <Card>
+          <STitle
+            title="Facturación anual por cliente"
+            sub={`${selectedYear || "—"} · Todos los clientes ordenados por importe`}
+          />
+          {topClientesChart.length === 0 ? (
+            <p style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: "20px 0" }}>Sin datos para {selectedYear}</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {topClientesChart.map((c, i) => (
+                <div key={`${c.nombre}-${i}`}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{
+                        width: 22, height: 22, borderRadius: "50%",
+                        background: i < 3 ? C.lime : `${C.lime}22`,
+                        color: i < 3 ? C.navy : C.lime,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 11, fontWeight: 800, flexShrink: 0,
+                      }}>{i + 1}</span>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: C.white }}>{c.nombre}</p>
+                        <p style={{ margin: 0, fontSize: 10, color: C.muted }}>{c.sector}</p>
+                      </div>
+                    </div>
+                    <span style={{ color: C.lime, fontWeight: 800, fontSize: 13 }}>{fmtEur(c.facturacion)}</span>
+                  </div>
+                  <div style={{ height: 4, borderRadius: 2, background: `${C.muted}22`, overflow: "hidden" }}>
+                    <div style={{
+                      width: `${(c.facturacion / maxClienteAll) * 100}%`, height: "100%",
+                      background: i < 3
+                        ? `linear-gradient(90deg, ${C.lime}, ${C.lime2})`
+                        : `${C.lime}55`,
+                      borderRadius: 2, transition: "width 0.6s ease",
+                    }} />
+                  </div>
+                </div>
+              ))}
+              {allClientesAño.length > 15 && (
+                <p style={{ color: C.muted, fontSize: 11, textAlign: "center", margin: "6px 0 0" }}>
+                  +{allClientesAño.length - 15} clientes más
+                </p>
+              )}
+            </div>
+          )}
+        </Card>
+
+        {/* ── ROW 5: Proyectos margen < 25% ── */}
+        <Card style={{ borderTop: `3px solid ${C.red}66` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+            <STitle
+              title={`Proyectos margen bajo · ${currentYear}`}
+              sub="Proyectos del año actual con margen inferior al 25%"
+            />
+            <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
+              <div style={{
+                background: `${C.red}18`, border: `1px solid ${C.red}44`,
+                borderRadius: 10, padding: "8px 16px", textAlign: "center",
+              }}>
+                <p style={{ margin: 0, color: C.red, fontSize: 22, fontWeight: 800, lineHeight: 1 }}>
+                  {margenBajo.count}
+                </p>
+                <p style={{ margin: "2px 0 0", color: C.muted, fontSize: 10 }}>proyectos</p>
+              </div>
+              <div style={{
+                background: `${C.red}18`, border: `1px solid ${C.red}44`,
+                borderRadius: 10, padding: "8px 16px", textAlign: "center",
+              }}>
+                <p style={{ margin: 0, color: C.red, fontSize: 22, fontWeight: 800, lineHeight: 1 }}>
+                  {fmtEur(margenBajo.total)}
+                </p>
+                <p style={{ margin: "2px 0 0", color: C.muted, fontSize: 10 }}>facturado</p>
+              </div>
+            </div>
+          </div>
+          {margenBajo.count === 0 ? (
+            <p style={{ color: C.lime, fontSize: 13, textAlign: "center", padding: "20px 0", fontWeight: 600 }}>
+              ✓ Todos los proyectos del año superan el 25% de margen
+            </p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
+              {margenBajo.proyectos.map((p, i) => (
+                <div key={i} style={{
+                  padding: "10px 14px",
+                  background: `${C.red}0d`,
                   borderRadius: 10,
-                  border: i === 0 ? `1px solid ${C.lime}33` : `1px solid ${C.muted}22`,
+                  border: `1px solid ${C.red}33`,
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{
-                      width: 20, height: 20, borderRadius: "50%",
-                      background: i === 0 ? C.lime : `${C.muted}33`,
-                      color: i === 0 ? C.navy : C.muted,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 10, fontWeight: 800, flexShrink: 0,
-                    }}>{i + 1}</span>
-                    <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{
                         margin: 0, fontSize: 12, fontWeight: 700, color: C.white,
                         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                        maxWidth: 160,
                       }}>{p.nombre}</p>
-                      <p style={{ margin: 0, fontSize: 10, color: C.muted }}>{p.cliente}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 10, color: C.muted }}>{p.cliente}</p>
                     </div>
-                  </div>
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <p style={{ margin: 0, color: C.lime, fontWeight: 800, fontSize: 13 }}>
-                      {fmtEur(p.importe)}
-                    </p>
-                    <Badge
-                      text={p.estado}
-                      color={p.estado === "Terminado y facturado" || p.estado === "Terminado" ? C.lime : C.purple}
-                    />
+                    <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
+                      <p style={{ margin: 0, color: C.white, fontWeight: 700, fontSize: 12 }}>{fmtEur(p.importe)}</p>
+                      <span style={{
+                        fontSize: 11, fontWeight: 800, color: C.red,
+                        background: `${C.red}22`, borderRadius: 20, padding: "1px 8px",
+                      }}>{p.margen}%</span>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-          </Card>
-        </div>
+          )}
+        </Card>
 
         {/* Footer */}
-        <div style={{
-          marginTop: 24, display: "flex", alignItems: "center",
-          justifyContent: "center", gap: 8,
-        }}>
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           <VistgoLogo size={16} />
           <span style={{ color: `${C.muted}66`, fontSize: 10 }}>
             Panel interno · Datos FileMaker OData en tiempo real · {new Date().toLocaleString("es-ES")}

@@ -5,6 +5,10 @@ import https from "node:https";
 
 const agent = new https.Agent({ rejectUnauthorized: false });
 
+// ── Server-side cache (5 min TTL) ────────────────────────────
+let _cache: { data: unknown; at: number } | null = null;
+const CACHE_TTL = 5 * 60 * 1000;
+
 function fmFetch(url: string, token: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const req = https.request(
@@ -23,8 +27,8 @@ function fmFetch(url: string, token: string): Promise<{ status: number; body: st
 
 function fix(s: string) {
   return s
-    .replace(/-\.(\d)/g, "-0.$1")          // -.39  → -0.39
-    .replace(/:\s*\?(\s*[,}\]])/g, ": null$1"); // : ?  → : null
+    .replace(/-\.(\d)/g, "-0.$1")               // -.39  → -0.39
+    .replace(/:\s*\?(\s*[,}\]])/g, ": null$1");  // : ?   → : null
 }
 
 async function fetchAll(baseUrl: string, token: string): Promise<Record<string, unknown>[]> {
@@ -51,20 +55,26 @@ export async function GET(req: NextRequest) {
   }
   if (!token) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
+  // Return cached response if still fresh
+  if (_cache && Date.now() - _cache.at < CACHE_TTL) {
+    return NextResponse.json(_cache.data);
+  }
+
   const base = `${server}/fmi/odata/v4/${db}`;
   const currentYear = new Date().getFullYear();
+  const todayMonth = new Date().getMonth() + 1; // 1-12
   const minYear = currentYear - 4;
 
   try {
     // Parallel fetch of all source tables
     const [facturas, presupuestos, proyectos, clientes] = await Promise.all([
       fetchAll(`${base}/Factura?$filter=Year ge ${minYear}`, token),
-      // Note: $select works here because year, FEEGraph, CVGraph have no spaces
+      // $select works here because year, FEEGraph, CVGraph have no spaces
       fetchAll(`${base}/Presupuesto?$filter=year ge ${minYear}&$select=year,FEEGraph,CVGraph`, token),
-      // No $select — need "Nombre proyecto" and "ID Cliente" (spaces), so fetch all fields
+      // No $select — "Nombre proyecto", "ID Cliente", "% margen" have spaces
       fetchAll(`${base}/ProyectosEjecutados?$filter=Year ge ${minYear}`, token),
-      // Can't $select here - "Tipo cliente", "Razón Social" have spaces
-      fetchAll(`${base}/ClientesGraficos`, token),
+      // $top=500 avoids extra pagination for lookup table; can't $select (spaces)
+      fetchAll(`${base}/ClientesGraficos?$top=500`, token),
     ]);
 
     // Build client lookup map: UUID → { sector, nombre }
@@ -110,7 +120,7 @@ export async function GET(req: NextRequest) {
       .sort(([a], [b]) => a - b)
       .map(([año, d]) => ({ año, fee: Math.round(d.fee), cv: Math.round(d.cv) }));
 
-    // ── Proyectos por mes y año ───────────────────────────────
+    // ── Proyectos por mes y año (count) ───────────────────────
     const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"] as const;
     const mesMap = new Map<number, number[]>();
     for (const p of proyectos) {
@@ -123,7 +133,19 @@ export async function GET(req: NextRequest) {
     const proyectosMes: Record<number, number[]> = {};
     mesMap.forEach((arr, y) => { proyectosMes[y] = arr; });
 
-    // ── Sectores per year (Factura + clientMap) ───────────────
+    // ── Facturación por mes y año (€) ─────────────────────────
+    const facMesMap = new Map<number, number[]>();
+    for (const f of facturas) {
+      const year = Number(f["Year"]);
+      const month = Number(f["Month"]);
+      if (!year || !month) continue;
+      if (!facMesMap.has(year)) facMesMap.set(year, new Array(12).fill(0));
+      facMesMap.get(year)![month - 1] += Number(f["BaseListado"]) || 0;
+    }
+    const facturasMes: Record<number, number[]> = {};
+    facMesMap.forEach((arr, y) => { facturasMes[y] = arr.map(Math.round); });
+
+    // ── Sectores per year ─────────────────────────────────────
     const sectorMapYear = new Map<number, Map<string, number>>();
     for (const f of facturas) {
       const year = Number(f["Year"]);
@@ -141,7 +163,7 @@ export async function GET(req: NextRequest) {
       sm.forEach((a, s) => { sectores[y][s] = Math.round(a); });
     });
 
-    // ── Top clientes per year ─────────────────────────────────
+    // ── Todos los clientes + top 5 per year ───────────────────
     const topClientByYear = new Map<number, Map<string, number>>();
     for (const f of facturas) {
       const year = Number(f["Year"]);
@@ -152,17 +174,53 @@ export async function GET(req: NextRequest) {
       const ym = topClientByYear.get(year)!;
       ym.set(id, (ym.get(id) ?? 0) + amount);
     }
-    const topClientes: Record<number, { nombre: string; sector: string; facturacion: number }[]> = {};
+
+    type ClienteRow = { nombre: string; sector: string; facturacion: number };
+    const allClientes: Record<number, ClienteRow[]> = {};
+    const topClientes: Record<number, ClienteRow[]> = {};
     topClientByYear.forEach((cm, year) => {
-      topClientes[year] = Array.from(cm.entries())
+      const sorted = Array.from(cm.entries())
         .sort(([, a], [, b]) => b - a)
-        .slice(0, 5)
         .map(([id, total]) => ({
           nombre: clientMap.get(id)?.nombre ?? "—",
           sector: clientMap.get(id)?.sector ?? "—",
           facturacion: Math.round(total),
         }));
+      allClientes[year] = sorted;
+      topClientes[year] = sorted.slice(0, 5);
     });
+
+    // ── YTD facturación + margen por cliente vs año anterior ──
+    const ytdMap = new Map<string, { actual: number; margenAct: number; anterior: number; margenAnt: number }>();
+    for (const f of facturas) {
+      const year = Number(f["Year"]);
+      const month = Number(f["Month"]);
+      const id = ((f["ID Cliente"] as string) || "").trim();
+      const base = Number(f["BaseListado"]) || 0;
+      const marg = Number(f["MargenListado"]) || 0;
+      if (!id || month > todayMonth) continue;
+      if (year === currentYear) {
+        const cur = ytdMap.get(id) ?? { actual: 0, margenAct: 0, anterior: 0, margenAnt: 0 };
+        cur.actual += base; cur.margenAct += marg;
+        ytdMap.set(id, cur);
+      } else if (year === currentYear - 1) {
+        const cur = ytdMap.get(id) ?? { actual: 0, margenAct: 0, anterior: 0, margenAnt: 0 };
+        cur.anterior += base; cur.margenAnt += marg;
+        ytdMap.set(id, cur);
+      }
+    }
+    const ytdClientes = Array.from(ytdMap.entries())
+      .filter(([, d]) => d.actual > 0 || d.anterior > 0)
+      .sort(([, a], [, b]) => b.actual - a.actual)
+      .slice(0, 10)
+      .map(([id, d]) => ({
+        nombre: clientMap.get(id)?.nombre ?? "—",
+        sector: clientMap.get(id)?.sector ?? "—",
+        ytdActual: Math.round(d.actual),
+        margenActual: Math.round(d.margenAct),
+        ytdAnterior: Math.round(d.anterior),
+        margenAnterior: Math.round(d.margenAnt),
+      }));
 
     // ── Top proyectos per year ────────────────────────────────
     const topProyByYear = new Map<number, { nombre: string; cliente: string; importe: number; estado: string }[]>();
@@ -189,11 +247,41 @@ export async function GET(req: NextRequest) {
         .slice(0, 5);
     });
 
+    // ── Proyectos con margen < 25% (año actual) ───────────────
+    const margenBajoList = proyectos
+      .filter(p =>
+        Number(p["Year"]) === currentYear &&
+        Number(p["% margen"]) > 0 &&
+        Number(p["% margen"]) < 25 &&
+        Number(p["TFactura"]) > 0
+      )
+      .map(p => ({
+        nombre: ((p["Nombre proyecto"] as string) || "—").trim(),
+        cliente: clientMap.get(((p["ID Cliente"] as string) || "").trim())?.nombre ?? "—",
+        importe: Math.round(Number(p["TFactura"]) || 0),
+        margen: Math.round(Number(p["% margen"]) || 0),
+      }))
+      .sort((a, b) => b.importe - a.importe);
+
+    const margenBajo = {
+      count: margenBajoList.length,
+      total: Math.round(margenBajoList.reduce((s, p) => s + p.importe, 0)),
+      proyectos: margenBajoList,
+    };
+
+    // ── Años disponibles ──────────────────────────────────────
     const añosSet: number[] = [];
     vmMap.forEach((_, y) => { if (!añosSet.includes(y)) añosSet.push(y); });
     const años = añosSet.sort((a, b) => a - b);
 
-    return NextResponse.json({ ventasMargen, feeCv, proyectosMes, sectores, topClientes, topProyectos, años, currentYear });
+    const result = {
+      ventasMargen, feeCv, proyectosMes, facturasMes,
+      sectores, topClientes, allClientes, ytdClientes,
+      topProyectos, margenBajo, años, currentYear, todayMonth,
+    };
+
+    _cache = { data: result, at: Date.now() };
+    return NextResponse.json(result);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 500 });

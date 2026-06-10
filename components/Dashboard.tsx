@@ -31,7 +31,7 @@ interface YtdCliente  {
 }
 interface MargenBajo  {
   count: number; total: number;
-  proyectos: { nombre: string; codigo: string; fechaFin: string; cliente: string; importe: number; margen: number }[];
+  proyectos: { nombre: string; alias: string; fechaFin: string; cliente: string; importe: number; margen: number }[];
 }
 interface YtdTotals {
   current: { ventas: number; margen: number; pct: number };
@@ -469,8 +469,8 @@ export default function Dashboard({
                 <YAxis yAxisId="pct" orientation="right" tickFormatter={v => `${v}%`} tick={{ fill: C.lila, fontSize: 10 }} axisLine={false} tickLine={false} domain={[0, 100]} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
-                <Bar yAxisId="eur" dataKey="actual"   name={`Fact. ${selectedYear}`}     fill={C.green}        radius={[4, 4, 0, 0]} maxBarSize={28} />
-                <Bar yAxisId="eur" dataKey="anterior" name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill="#8892b4"      radius={[4, 4, 0, 0]} maxBarSize={28} />
+                <Bar yAxisId="eur" dataKey="actual"   name={`Fact. ${selectedYear}`}     fill={C.lime}        radius={[4, 4, 0, 0]} maxBarSize={28} />
+                <Bar yAxisId="eur" dataKey="anterior" name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill="#4a5586"      radius={[4, 4, 0, 0]} maxBarSize={28} />
                 <Line yAxisId="pct" dataKey="margenPct" name="Margen %" stroke={C.lila} strokeWidth={2} dot={{ fill: C.lila, r: 3 }} connectNulls />
               </ComposedChart>
             </ResponsiveContainer>
@@ -497,8 +497,8 @@ export default function Dashboard({
               <YAxis yAxisId="pct" orientation="right" tickFormatter={v => `${v}%`} tick={{ fill: C.lila, fontSize: 10 }} axisLine={false} tickLine={false} domain={[0, 100]} />
               <Tooltip content={<CustomTooltip />} />
               <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
-              <Bar yAxisId="eur" dataKey="actual"    name={`Fact. ${selectedYear}`}     fill={C.green}        radius={[4, 4, 0, 0]} maxBarSize={60} />
-              <Bar yAxisId="eur" dataKey="anterior"  name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill="#8892b4"      radius={[4, 4, 0, 0]} maxBarSize={60} />
+              <Bar yAxisId="eur" dataKey="actual"    name={`Fact. ${selectedYear}`}     fill={C.lime}        radius={[4, 4, 0, 0]} maxBarSize={60} />
+              <Bar yAxisId="eur" dataKey="anterior"  name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill="#4a5586"      radius={[4, 4, 0, 0]} maxBarSize={60} />
               <Line yAxisId="pct" dataKey="margenPct" name="Margen %" stroke={C.lila} strokeWidth={2} dot={{ fill: C.lila, r: 5 }} connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
@@ -532,8 +532,8 @@ export default function Dashboard({
                 <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip isEur={false} />} />
                 <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
-                <Bar dataKey="actual"   name={`${selectedYear}`}             fill={C.green}   radius={[4, 4, 0, 0]} maxBarSize={20} />
-                <Bar dataKey="anterior" name={`${selectedYear ? selectedYear - 1 : "ant."}`} fill="#8892b4" radius={[4, 4, 0, 0]} maxBarSize={20} />
+                <Bar dataKey="actual"   name={`${selectedYear}`}             fill={C.lime}   radius={[4, 4, 0, 0]} maxBarSize={20} />
+                <Bar dataKey="anterior" name={`${selectedYear ? selectedYear - 1 : "ant."}`} fill="#4a5586" radius={[4, 4, 0, 0]} maxBarSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -780,44 +780,50 @@ export default function Dashboard({
               ✓ Todos los proyectos terminados en {currentYear} superan el 25% de margen
             </p>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 10 }}>
-              {margenBajo.proyectos.map((p, i) => (
-                <div key={i} style={{
-                  padding: "10px 14px",
-                  background: `${C.red}0d`,
-                  borderRadius: 10,
-                  border: `1px solid ${C.red}33`,
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{
-                        margin: 0, fontSize: 12, fontWeight: 700, color: C.white,
-                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                      }}>{p.nombre}</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 10, color: C.muted }}>{p.cliente}</p>
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
-                      <p style={{ margin: 0, color: C.white, fontWeight: 700, fontSize: 12 }}>{fmtEur(p.importe)}</p>
-                      <span style={{
-                        fontSize: 11, fontWeight: 800, color: C.red,
-                        background: `${C.red}22`, borderRadius: 20, padding: "1px 8px",
-                      }}>{p.margen}%</span>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                    <span style={{
-                      fontSize: 10, color: C.muted,
-                      background: `${C.muted}18`, borderRadius: 4, padding: "1px 6px",
-                    }}>{p.codigo}</span>
-                    {p.fechaFin !== "—" && (
-                      <span style={{
-                        fontSize: 10, color: C.muted,
-                        background: `${C.muted}18`, borderRadius: 4, padding: "1px 6px",
-                      }}>Fin: {p.fechaFin}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    {["Cliente", "Alias", "Fin", "Venta", "% Margen"].map(h => (
+                      <th key={h} style={{
+                        padding: "6px 10px", textAlign: h === "Venta" || h === "% Margen" ? "right" : "left",
+                        color: C.muted, fontSize: 10, fontWeight: 600, textTransform: "uppercase",
+                        letterSpacing: 0.8, borderBottom: `1px solid ${C.muted}22`,
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {margenBajo.proyectos.map((p, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid ${C.muted}15` }}>
+                      <td style={{ padding: "8px 10px", color: C.white, fontWeight: 600, maxWidth: 200 }}>
+                        <p style={{ margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.cliente}</p>
+                        <p style={{ margin: 0, fontSize: 10, color: C.muted, fontWeight: 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.nombre}</p>
+                      </td>
+                      <td style={{ padding: "8px 10px" }}>
+                        <span style={{
+                          fontSize: 11, color: C.muted,
+                          background: `${C.muted}18`, borderRadius: 4, padding: "2px 7px",
+                          whiteSpace: "nowrap",
+                        }}>{p.alias}</span>
+                      </td>
+                      <td style={{ padding: "8px 10px", color: C.muted, whiteSpace: "nowrap", fontSize: 11 }}>
+                        {p.fechaFin !== "—" ? p.fechaFin : "—"}
+                      </td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: C.white, fontWeight: 700, whiteSpace: "nowrap" }}>
+                        {fmtEur(p.importe)}
+                      </td>
+                      <td style={{ padding: "8px 10px", textAlign: "right" }}>
+                        <span style={{
+                          fontSize: 12, fontWeight: 800, color: C.red,
+                          background: `${C.red}22`, borderRadius: 20, padding: "2px 10px",
+                          whiteSpace: "nowrap",
+                        }}>{p.margen}%</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </Card>

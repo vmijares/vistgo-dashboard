@@ -309,7 +309,7 @@ export async function GET(req: NextRequest) {
       )
       .map(p => ({
         nombre: ((p["Nombre proyecto"] as string) || "—").trim(),
-        codigo: ((p["Código Proyecto"] as string) || "—").trim(),
+        alias: ((p["Código Proyecto"] as string) || "—").trim(),
         fechaFin: ((p["Fecha término"] as string) || "—"),
         cliente: clientMap.get(((p["ID Cliente"] as string) || "").trim())?.nombre ?? "—",
         importe: Math.round(Number(p["TFactura"]) || 0),

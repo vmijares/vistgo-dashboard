@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
 
   try {
     // Parallel fetch of all source tables
-    const [facturas, presupuestos, proyectos, clientes] = await Promise.all([
+    const [facturas, presupuestos, proyectos, clientes, presupuestosMB] = await Promise.all([
       fetchAll(`${base}/Factura?$filter=Year ge ${minYear}`, token),
       // $select works here because year, FEEGraph, CVGraph have no spaces
       fetchAll(`${base}/Presupuesto?$filter=year ge ${minYear}&$select=year,FEEGraph,CVGraph`, token),
@@ -79,6 +79,8 @@ export async function GET(req: NextRequest) {
       fetchAll(`${base}/ProyectosEjecutados?$filter=Year ge ${minYear}`, token),
       // $top=500 avoids extra pagination for lookup table; can't $select (spaces)
       fetchAll(`${base}/ClientesGraficos?$top=500`, token),
+      // Targeted fetch for presupuestos margen bajo (current year only, no $select — field names have spaces)
+      fetchAll(`${base}/Presupuesto?$filter=year eq ${currentYear}`, token),
     ]);
 
     // Build client lookup map: UUID → { sector, nombre }
@@ -298,28 +300,30 @@ export async function GET(req: NextRequest) {
     const previsionAnual: Record<number, number> = {};
     previsionMap.forEach((v, y) => { previsionAnual[y] = Math.round(v); });
 
-    // ── Proyectos con margen < 25% (año actual, solo terminados) ─
-    const margenBajoList = proyectos
-      .filter(p =>
-        Number(p["Year"]) === currentYear &&
-        Number(p["% margen"]) > 0 &&
-        Number(p["% margen"]) < 25 &&
-        Number(p["TFactura"]) > 0 &&
-        (p["Estado"] === "Terminado y facturado" || p["Estado"] === "Terminado")
-      )
+    // ── Presupuestos margen bajo < 25% (año actual, terminados y facturados) ─
+    // Source: Presupuesto table — fields: Alias, Fecha término, Venta, Por sobre venta (margin %)
+    const margenBajoList = presupuestosMB
+      .filter(p => {
+        const porSobre = Number(p["Por sobre venta"]);
+        return (
+          p["Estado"] === "Terminado y facturado" &&
+          porSobre > 0 &&
+          porSobre < 25 &&
+          Number(p["Venta"]) > 0
+        );
+      })
       .map(p => ({
-        nombre: ((p["Nombre proyecto"] as string) || "—").trim(),
-        alias: ((p["Código Proyecto"] as string) || "—").trim(),
+        alias:    ((p["Alias"] as string) || "—").trim(),
         fechaFin: ((p["Fecha término"] as string) || "—"),
-        cliente: clientMap.get(((p["ID Cliente"] as string) || "").trim())?.nombre ?? "—",
-        importe: Math.round(Number(p["TFactura"]) || 0),
-        margen: Math.round(Number(p["% margen"]) || 0),
+        cliente:  clientMap.get(((p["ID Cliente"] as string) || "").trim())?.nombre ?? "—",
+        venta:    Math.round(Number(p["Venta"]) || 0),
+        margen:   Number(Number(p["Por sobre venta"]).toFixed(1)),
       }))
-      .sort((a, b) => b.importe - a.importe);
+      .sort((a, b) => b.venta - a.venta);
 
     const margenBajo = {
       count: margenBajoList.length,
-      total: Math.round(margenBajoList.reduce((s, p) => s + p.importe, 0)),
+      total: Math.round(margenBajoList.reduce((s, p) => s + p.venta, 0)),
       proyectos: margenBajoList,
     };
 

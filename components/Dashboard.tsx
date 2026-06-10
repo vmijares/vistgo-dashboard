@@ -31,7 +31,7 @@ interface YtdCliente  {
 }
 interface MargenBajo  {
   count: number; total: number;
-  proyectos: { nombre: string; alias: string; fechaFin: string; cliente: string; importe: number; margen: number }[];
+  proyectos: { alias: string; fechaFin: string; cliente: string; venta: number; margen: number }[];
 }
 interface YtdTotals {
   current: { ventas: number; margen: number; pct: number };
@@ -796,22 +796,20 @@ export default function Dashboard({
                 <tbody>
                   {margenBajo.proyectos.map((p, i) => (
                     <tr key={i} style={{ borderBottom: `1px solid ${C.muted}15` }}>
-                      <td style={{ padding: "8px 10px", color: C.white, fontWeight: 600, maxWidth: 200 }}>
+                      <td style={{ padding: "8px 10px", color: C.white, fontWeight: 600, maxWidth: 160 }}>
                         <p style={{ margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.cliente}</p>
-                        <p style={{ margin: 0, fontSize: 10, color: C.muted, fontWeight: 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.nombre}</p>
                       </td>
-                      <td style={{ padding: "8px 10px" }}>
-                        <span style={{
-                          fontSize: 11, color: C.muted,
-                          background: `${C.muted}18`, borderRadius: 4, padding: "2px 7px",
-                          whiteSpace: "nowrap",
-                        }}>{p.alias}</span>
+                      <td style={{ padding: "8px 10px", maxWidth: 260 }}>
+                        <p style={{
+                          margin: 0, fontSize: 11, color: C.muted,
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                        }}>{p.alias}</p>
                       </td>
                       <td style={{ padding: "8px 10px", color: C.muted, whiteSpace: "nowrap", fontSize: 11 }}>
                         {p.fechaFin !== "—" ? p.fechaFin : "—"}
                       </td>
                       <td style={{ padding: "8px 10px", textAlign: "right", color: C.white, fontWeight: 700, whiteSpace: "nowrap" }}>
-                        {fmtEur(p.importe)}
+                        {fmtEur(p.venta)}
                       </td>
                       <td style={{ padding: "8px 10px", textAlign: "right" }}>
                         <span style={{

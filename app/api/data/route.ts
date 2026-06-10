@@ -3,7 +3,8 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import https from "node:https";
 
-const agent = new https.Agent({ rejectUnauthorized: false });
+// keepAlive: false — FM no acumula conexiones abiertas entre invocaciones warm
+const agent = new https.Agent({ rejectUnauthorized: false, keepAlive: false });
 
 // ── Server-side cache (5 min TTL) ────────────────────────────
 let _cache: { data: unknown; at: number } | null = null;
@@ -17,10 +18,13 @@ function fmFetch(url: string, token: string): Promise<{ status: number; body: st
       (res) => {
         let body = "";
         res.on("data", (c) => (body += c));
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+        res.on("end", () => {
+          res.destroy(); // cierra el socket explícitamente tras leer
+          resolve({ status: res.statusCode ?? 0, body });
+        });
       }
     );
-    req.on("error", reject);
+    req.on("error", (err) => { req.destroy(); reject(err); });
     req.end();
   });
 }

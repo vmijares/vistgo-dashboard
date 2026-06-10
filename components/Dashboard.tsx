@@ -469,8 +469,8 @@ export default function Dashboard({
                 <YAxis yAxisId="pct" orientation="right" tickFormatter={v => `${v}%`} tick={{ fill: C.lila, fontSize: 10 }} axisLine={false} tickLine={false} domain={[0, 100]} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
-                <Bar yAxisId="eur" dataKey="actual"   name={`Fact. ${selectedYear}`}     fill={C.white}        radius={[4, 4, 0, 0]} maxBarSize={28} />
-                <Bar yAxisId="eur" dataKey="anterior" name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill={`${C.muted}55`} radius={[4, 4, 0, 0]} maxBarSize={28} />
+                <Bar yAxisId="eur" dataKey="actual"   name={`Fact. ${selectedYear}`}     fill={C.lime2}        radius={[4, 4, 0, 0]} maxBarSize={28} />
+                <Bar yAxisId="eur" dataKey="anterior" name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill={`${C.muted}99`} radius={[4, 4, 0, 0]} maxBarSize={28} />
                 <Line yAxisId="pct" dataKey="margenPct" name="Margen %" stroke={C.lila} strokeWidth={2} dot={{ fill: C.lila, r: 3 }} connectNulls />
               </ComposedChart>
             </ResponsiveContainer>
@@ -497,8 +497,8 @@ export default function Dashboard({
               <YAxis yAxisId="pct" orientation="right" tickFormatter={v => `${v}%`} tick={{ fill: C.lila, fontSize: 10 }} axisLine={false} tickLine={false} domain={[0, 100]} />
               <Tooltip content={<CustomTooltip />} />
               <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
-              <Bar yAxisId="eur" dataKey="actual"    name={`Fact. ${selectedYear}`}     fill={C.white}        radius={[4, 4, 0, 0]} maxBarSize={60} />
-              <Bar yAxisId="eur" dataKey="anterior"  name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill={`${C.muted}55`} radius={[4, 4, 0, 0]} maxBarSize={60} />
+              <Bar yAxisId="eur" dataKey="actual"    name={`Fact. ${selectedYear}`}     fill={C.lime2}        radius={[4, 4, 0, 0]} maxBarSize={60} />
+              <Bar yAxisId="eur" dataKey="anterior"  name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill={`${C.muted}99`} radius={[4, 4, 0, 0]} maxBarSize={60} />
               <Line yAxisId="pct" dataKey="margenPct" name="Margen %" stroke={C.lila} strokeWidth={2} dot={{ fill: C.lila, r: 5 }} connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
@@ -532,8 +532,8 @@ export default function Dashboard({
                 <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip isEur={false} />} />
                 <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
-                <Bar dataKey="actual"   name={`${selectedYear}`}             fill={C.white}        radius={[4, 4, 0, 0]} maxBarSize={20} />
-                <Bar dataKey="anterior" name={`${selectedYear ? selectedYear - 1 : "ant."}`} fill={`${C.muted}55`} radius={[4, 4, 0, 0]} maxBarSize={20} />
+                <Bar dataKey="actual"   name={`${selectedYear}`}             fill={C.lime2}        radius={[4, 4, 0, 0]} maxBarSize={20} />
+                <Bar dataKey="anterior" name={`${selectedYear ? selectedYear - 1 : "ant."}`} fill={`${C.muted}99`} radius={[4, 4, 0, 0]} maxBarSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </Card>

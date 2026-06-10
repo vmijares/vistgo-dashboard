@@ -3,11 +3,8 @@ import { useState, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, Legend,
-  ComposedChart, Line, YAxis as YAxisType,
+  ComposedChart, Line,
 } from "recharts";
-
-// Suppress unused import warning — YAxisType alias needed for dual-axis chart
-void (YAxisType as unknown);
 
 // ── Brand Colors ──────────────────────────────────────────────
 const C = {
@@ -34,7 +31,7 @@ interface YtdCliente  {
 }
 interface MargenBajo  {
   count: number; total: number;
-  proyectos: { nombre: string; cliente: string; importe: number; margen: number }[];
+  proyectos: { nombre: string; codigo: string; fechaFin: string; cliente: string; importe: number; margen: number }[];
 }
 interface YtdTotals {
   current: { ventas: number; margen: number; pct: number };
@@ -54,6 +51,7 @@ interface DashboardProps {
   ytdTotals:     YtdTotals;
   topProyectos:  Record<number, TopProyecto[]>;
   margenBajo:    MargenBajo;
+  previsionAnual: Record<number, number>;
   años:          number[];
   currentYear:   number;
   todayMonth:    number;
@@ -168,34 +166,68 @@ const YearPill = ({
 export default function Dashboard({
   ventasMargen, feeCv, proyectosMes, facturasMes, margenMes,
   sectores, topClientes, allClientes, ytdClientes, ytdTotals,
-  topProyectos, margenBajo,
+  topProyectos, margenBajo, previsionAnual,
   años, currentYear, todayMonth, onLogout,
 }: DashboardProps) {
   const [selectedYear, setSelectedYear] = useState<number>(0);
+  const [objetivos, setObjetivos] = useState<Record<number, number>>({});
+  const [editingObj, setEditingObj] = useState(false);
+  const [objInput, setObjInput] = useState("");
+
+  // suppress unused
+  void ytdTotals;
+  void topProyectos;
 
   useEffect(() => {
     if (años.length > 0) setSelectedYear(años[años.length - 1]);
   }, [años]);
 
-  // ── KPI deltas (YTD: ene–todayMonth ambos años) ──────────────
-  const ytdDeltaV = ytdTotals.prev.ventas > 0
-    ? (((ytdTotals.current.ventas - ytdTotals.prev.ventas) / ytdTotals.prev.ventas) * 100).toFixed(1) : "—";
-  const ytdDeltaM = ytdTotals.prev.ventas > 0
-    ? (ytdTotals.current.pct - ytdTotals.prev.pct).toFixed(1) : "—";
+  // Load objectives from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("vistgo_objetivo_margen");
+      if (saved) setObjetivos(JSON.parse(saved));
+    } catch { /* ignore */ }
+  }, []);
 
-  // YTD project count: sum months 0..todayMonth-1
-  const ytdEjecActual = (proyectosMes[currentYear] ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
-  const ytdEjecPrev   = (proyectosMes[currentYear - 1] ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
+  const saveObjetivo = (val: string) => {
+    const num = Number(val.replace(/[^\d]/g, ""));
+    if (num >= 0) {
+      const updated = { ...objetivos, [selectedYear]: num };
+      setObjetivos(updated);
+      localStorage.setItem("vistgo_objetivo_margen", JSON.stringify(updated));
+    }
+    setEditingObj(false);
+  };
+
+  // ── KPIs — recalculated from facturasMes/margenMes for selectedYear ──
+  const year = selectedYear || currentYear;
+  const ytdV  = (facturasMes[year]   ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
+  const ytdVp = (facturasMes[year-1] ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
+  const ytdM  = (margenMes[year]     ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
+  const ytdMp = (margenMes[year-1]   ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
+  const ytdMpct  = ytdV  > 0 ? ytdM  / ytdV  * 100 : 0;
+  const ytdMpctP = ytdVp > 0 ? ytdMp / ytdVp * 100 : 0;
+
+  const ytdDeltaV = ytdVp > 0
+    ? (((ytdV - ytdVp) / ytdVp) * 100).toFixed(1) : "—";
+  const ytdDeltaM = ytdVp > 0
+    ? (ytdMpct - ytdMpctP).toFixed(1) : "—";
+
+  // YTD project count
+  const ytdEjecActual = (proyectosMes[year]   ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
+  const ytdEjecPrev   = (proyectosMes[year-1] ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
   const ytdDeltaEjec  = ytdEjecPrev > 0
     ? (((ytdEjecActual - ytdEjecPrev) / ytdEjecPrev) * 100).toFixed(1) : "—";
 
   const mesRangeLabel = `${MESES_CORTO_ES[0]}–${MESES_CORTO_ES[todayMonth - 1]}`;
 
-  const clientesAño: TopCliente[] = selectedYear ? (topClientes[selectedYear] ?? []) : [];
-  const topCliente = clientesAño[0];
-  const topClientePrev = selectedYear ? (topClientes[selectedYear - 1] ?? [])[0] : undefined;
-  const deltaTopC = topCliente && topClientePrev && topClientePrev.facturacion > 0
-    ? (((topCliente.facturacion - topClientePrev.facturacion) / topClientePrev.facturacion) * 100).toFixed(1) : "—";
+  // Previsión hasta 31/12
+  const prevision = previsionAnual[year] ?? 0;
+
+  // Objetivo margen
+  const objetivo = objetivos[year] ?? 0;
+  const pctObj   = objetivo > 0 ? (ytdM / objetivo) * 100 : 0;
 
   const avgMargen = ventasMargen.length > 0
     ? (ventasMargen.reduce((a, d) => a + d.pct, 0) / ventasMargen.length).toFixed(1) : "—";
@@ -211,6 +243,18 @@ export default function Dashboard({
     const marActual  = selectedYear ? (margenMes[selectedYear]?.[i]       ?? 0) : 0;
     const margenPct  = facActual > 0 ? Number(((marActual / facActual) * 100).toFixed(1)) : null;
     return { mes, actual: facActual, anterior: facPrev, margenPct };
+  });
+
+  // Facturación por trimestres
+  const dataTrimes = ["Q1", "Q2", "Q3", "Q4"].map((q, qi) => {
+    const ms = [0, 1, 2].map(m => qi * 3 + m);
+    const actual   = ms.reduce((s, m) => s + (facturasMes[selectedYear]?.[m]   ?? 0), 0);
+    const anterior = ms.reduce((s, m) => s + (facturasMes[selectedYear - 1]?.[m] ?? 0), 0);
+    const margenA  = ms.reduce((s, m) => s + (margenMes[selectedYear]?.[m]     ?? 0), 0);
+    return {
+      q, actual, anterior,
+      margenPct: actual > 0 ? Number((margenA / actual * 100).toFixed(1)) : null,
+    };
   });
 
   // Proyectos por mes — agrupado actual + anterior
@@ -241,9 +285,6 @@ export default function Dashboard({
     const y2 = (allClientes[selectedYear - 2] ?? []).find(x => x.nombre === c.nombre)?.facturacion ?? 0;
     return Math.max(mx, y0, y1, y2);
   }, 1);
-
-  // suppress unused
-  void topProyectos;
 
   return (
     <div style={{
@@ -288,46 +329,84 @@ export default function Dashboard({
 
       <div style={{ padding: "24px 20px", maxWidth: 1280, margin: "0 auto" }}>
 
-        {/* ── KPIs — comparativa YTD ── */}
+        {/* ── KPIs — comparativa YTD por año seleccionado ── */}
         <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
           <KPI
             icon="💶"
-            label={`Facturación ${mesRangeLabel} ${currentYear}`}
-            value={fmtEur(ytdTotals.current.ventas)}
+            label={`Facturación ${mesRangeLabel} ${year}`}
+            value={fmtEur(ytdV)}
             sub={ytdDeltaV !== "—"
-              ? `${deltaSign(ytdDeltaV)} ${Math.abs(Number(ytdDeltaV))}% vs ${currentYear - 1} (${mesRangeLabel})`
+              ? `${deltaSign(ytdDeltaV)} ${Math.abs(Number(ytdDeltaV))}% vs ${year - 1} (${mesRangeLabel})`
               : "Sin comparativa"}
             accent={ytdDeltaV !== "—" ? deltaColor(ytdDeltaV) : C.lime}
           />
           <KPI
             icon="📈"
-            label={`Margen ${mesRangeLabel} ${currentYear}`}
-            value={`${ytdTotals.current.pct}%`}
+            label={`Margen ${mesRangeLabel} ${year}`}
+            value={`${ytdMpct.toFixed(1)}%`}
             sub={ytdDeltaM !== "—"
-              ? `${deltaSign(ytdDeltaM)} ${Math.abs(Number(ytdDeltaM))}pp vs ${currentYear - 1} (${mesRangeLabel})`
+              ? `${deltaSign(ytdDeltaM)} ${Math.abs(Number(ytdDeltaM))}pp vs ${year - 1} (${mesRangeLabel})`
               : "Sin comparativa"}
             accent={ytdDeltaM !== "—" ? deltaColor(ytdDeltaM) : C.lime}
           />
           <KPI
             icon="🗂"
-            label={`Proyectos ${mesRangeLabel} ${currentYear}`}
+            label={`Proyectos ${mesRangeLabel} ${year}`}
             value={ytdEjecActual}
             sub={ytdDeltaEjec !== "—"
-              ? `${deltaSign(ytdDeltaEjec)} ${Math.abs(Number(ytdDeltaEjec))}% vs ${currentYear - 1} (${mesRangeLabel})`
+              ? `${deltaSign(ytdDeltaEjec)} ${Math.abs(Number(ytdDeltaEjec))}% vs ${year - 1} (${mesRangeLabel})`
               : `${ytdEjecActual} proyectos ejecutados`}
             accent={ytdDeltaEjec !== "—" ? deltaColor(ytdDeltaEjec) : C.lime2}
           />
           <KPI
-            icon="🏆"
-            label={`Top cliente ${selectedYear || currentYear}`}
-            value={topCliente ? topCliente.nombre.split(" ")[0] : "—"}
-            sub={topCliente
-              ? deltaTopC !== "—"
-                ? `${fmtEur(topCliente.facturacion)} · ${deltaSign(deltaTopC)}${Math.abs(Number(deltaTopC))}% vs ${selectedYear - 1}`
-                : `${fmtEur(topCliente.facturacion)} · ${topCliente.sector}`
-              : "Sin datos"}
-            accent={C.red}
+            icon="📋"
+            label={`En previsión hasta 31/12 · ${year}`}
+            value={prevision > 0 ? fmtEur(prevision) : "—"}
+            sub="Proyectos en ejecución"
+            accent={C.lila}
           />
+          {/* Objetivo de margen — editable */}
+          <div style={{
+            background: C.navyM, borderRadius: 14, padding: "18px 20px",
+            borderTop: `3px solid ${objetivo > 0 ? (pctObj >= 100 ? C.lime : pctObj >= 75 ? C.lime2 : C.red) : C.muted}`,
+            flex: "1 1 160px", minWidth: 140, position: "relative", overflow: "hidden",
+          }}>
+            <div style={{ position: "absolute", top: 10, right: 14, fontSize: 20, opacity: 0.15 }}>🎯</div>
+            <p style={{ color: C.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, margin: 0, fontWeight: 600 }}>
+              Objetivo margen {year}
+            </p>
+            <p style={{ color: C.white, fontSize: 26, fontWeight: 800, margin: "6px 0 2px", lineHeight: 1 }}>
+              {objetivo > 0 ? `${pctObj.toFixed(1)}%` : "—"}
+            </p>
+            {objetivo > 0 && (
+              <p style={{ color: pctObj >= 100 ? C.lime : pctObj >= 75 ? C.lime2 : C.red, fontSize: 11, margin: "0 0 6px", fontWeight: 500 }}>
+                {fmtEur(ytdM)} de {fmtEur(objetivo)}
+              </p>
+            )}
+            {editingObj ? (
+              <input
+                autoFocus
+                type="number"
+                defaultValue={objetivo || ""}
+                placeholder="Ej: 650000"
+                onBlur={e => saveObjetivo(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") saveObjetivo((e.target as HTMLInputElement).value); if (e.key === "Escape") setEditingObj(false); }}
+                style={{
+                  background: `${C.navy}`, border: `1px solid ${C.lime}55`,
+                  borderRadius: 6, padding: "4px 8px", color: C.white,
+                  fontSize: 12, width: "100%", fontFamily: "'DM Sans',sans-serif", marginTop: 4,
+                }}
+              />
+            ) : (
+              <button onClick={() => { setObjInput(String(objetivo || "")); setEditingObj(true); }} style={{
+                background: "transparent", border: `1px solid ${C.muted}33`,
+                borderRadius: 6, padding: "3px 8px", color: C.muted,
+                fontSize: 10, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+              }}>
+                {objetivo > 0 ? `Objetivo: ${fmtEur(objetivo)}` : "Configura objetivo"}
+              </button>
+            )}
+          </div>
           <KPI
             icon="⭐"
             label={`Margen acumulado ${ventasMargen.length}a`}
@@ -382,23 +461,48 @@ export default function Dashboard({
                 padding: "2px 10px", fontSize: 11, fontWeight: 700, flexShrink: 0,
               }}>{fmtEur(dataFacMes.reduce((s, d) => s + d.actual, 0))}</span>
             </div>
-            <ResponsiveContainer width="100%" height={230}>
+            <ResponsiveContainer width="100%" height={180}>
               <ComposedChart data={dataFacMes} barGap={2}>
                 <CartesianGrid strokeDasharray="3 3" stroke={`${C.muted}22`} vertical={false} />
                 <XAxis dataKey="mes" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
                 <YAxis yAxisId="eur" tickFormatter={fmt} tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
                 <YAxis yAxisId="pct" orientation="right" tickFormatter={v => `${v}%`} tick={{ fill: C.lila, fontSize: 10 }} axisLine={false} tickLine={false} domain={[0, 100]} />
-                <Tooltip content={
-                  <CustomTooltip />
-                } />
+                <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
-                <Bar yAxisId="eur" dataKey="actual"   name={`Fact. ${selectedYear}`}     fill={C.lime}         radius={[4, 4, 0, 0]} maxBarSize={28} />
+                <Bar yAxisId="eur" dataKey="actual"   name={`Fact. ${selectedYear}`}     fill={C.white}        radius={[4, 4, 0, 0]} maxBarSize={28} />
                 <Bar yAxisId="eur" dataKey="anterior" name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill={`${C.muted}55`} radius={[4, 4, 0, 0]} maxBarSize={28} />
                 <Line yAxisId="pct" dataKey="margenPct" name="Margen %" stroke={C.lila} strokeWidth={2} dot={{ fill: C.lila, r: 3 }} connectNulls />
               </ComposedChart>
             </ResponsiveContainer>
           </Card>
         </div>
+
+        {/* ── ROW 1b: Facturación por trimestres ── */}
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+            <STitle
+              title="Facturación por trimestres"
+              sub={`${selectedYear || "—"} vs ${selectedYear ? selectedYear - 1 : "—"} · línea = % margen ${selectedYear}`}
+            />
+            <span style={{
+              background: `${C.lila}22`, color: C.lila, borderRadius: 20,
+              padding: "2px 10px", fontSize: 11, fontWeight: 700, flexShrink: 0,
+            }}>{fmtEur(dataTrimes.reduce((s, d) => s + d.actual, 0))}</span>
+          </div>
+          <ResponsiveContainer width="100%" height={160}>
+            <ComposedChart data={dataTrimes} barGap={4}>
+              <CartesianGrid strokeDasharray="3 3" stroke={`${C.muted}22`} vertical={false} />
+              <XAxis dataKey="q" tick={{ fill: C.muted, fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="eur" tickFormatter={fmt} tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="pct" orientation="right" tickFormatter={v => `${v}%`} tick={{ fill: C.lila, fontSize: 10 }} axisLine={false} tickLine={false} domain={[0, 100]} />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
+              <Bar yAxisId="eur" dataKey="actual"    name={`Fact. ${selectedYear}`}     fill={C.white}        radius={[4, 4, 0, 0]} maxBarSize={60} />
+              <Bar yAxisId="eur" dataKey="anterior"  name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill={`${C.muted}55`} radius={[4, 4, 0, 0]} maxBarSize={60} />
+              <Line yAxisId="pct" dataKey="margenPct" name="Margen %" stroke={C.lila} strokeWidth={2} dot={{ fill: C.lila, r: 5 }} connectNulls />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </Card>
 
         {/* ── ROW 2: Proyectos mes (con YoY) + FEE CV ── */}
         <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 18, marginBottom: 18 }}>
@@ -428,7 +532,7 @@ export default function Dashboard({
                 <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip isEur={false} />} />
                 <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
-                <Bar dataKey="actual"   name={`${selectedYear}`}             fill={C.lime}         radius={[4, 4, 0, 0]} maxBarSize={20} />
+                <Bar dataKey="actual"   name={`${selectedYear}`}             fill={C.white}        radius={[4, 4, 0, 0]} maxBarSize={20} />
                 <Bar dataKey="anterior" name={`${selectedYear ? selectedYear - 1 : "ant."}`} fill={`${C.muted}55`} radius={[4, 4, 0, 0]} maxBarSize={20} />
               </BarChart>
             </ResponsiveContainer>
@@ -482,7 +586,7 @@ export default function Dashboard({
           <Card style={{ margin: 0 }}>
             <STitle
               title={`Facturación hasta ${MESES_NOMBRE[todayMonth - 1]}`}
-              sub={`Por cliente · ${currentYear} vs ${currentYear - 1} · mismas fechas`}
+              sub={`Por cliente · ${year} vs ${year - 1} · mismas fechas`}
             />
             {ytdClientes.length === 0 ? (
               <p style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: "40px 0" }}>
@@ -570,6 +674,19 @@ export default function Dashboard({
             title="Facturación anual por cliente"
             sub={`Últimos 3 años · ${selectedYear ? selectedYear - 2 : "—"}–${selectedYear || "—"} · ordenado por ${selectedYear || "año actual"}`}
           />
+          {/* Leyenda de colores */}
+          <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
+            {[
+              { year: selectedYear,     color: C.lime  },
+              { year: selectedYear - 1, color: C.lila  },
+              { year: selectedYear - 2, color: C.muted },
+            ].map(({ year: y, color }) => y > 0 && (
+              <div key={y} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
+                <span style={{ color: C.muted, fontSize: 11 }}>{y}</span>
+              </div>
+            ))}
+          </div>
           {topClientesChart.length === 0 ? (
             <p style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: "20px 0" }}>Sin datos para {selectedYear}</p>
           ) : (
@@ -579,9 +696,9 @@ export default function Dashboard({
                 const y1 = (allClientes[selectedYear - 1] ?? []).find(x => x.nombre === c.nombre)?.facturacion ?? 0;
                 const y2 = (allClientes[selectedYear - 2] ?? []).find(x => x.nombre === c.nombre)?.facturacion ?? 0;
                 const years = [
-                  { year: selectedYear,     val: y0, color: C.lime },
-                  { year: selectedYear - 1, val: y1, color: C.lime2 },
-                  { year: selectedYear - 2, val: y2, color: `${C.muted}88` },
+                  { year: selectedYear,     val: y0, color: C.lime  },
+                  { year: selectedYear - 1, val: y1, color: C.lila  },
+                  { year: selectedYear - 2, val: y2, color: C.muted },
                 ];
                 return (
                   <div key={`${c.nombre}-${i}`}>
@@ -602,9 +719,9 @@ export default function Dashboard({
                       <span style={{ color: C.lime, fontWeight: 800, fontSize: 13 }}>{fmtEur(y0)}</span>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      {years.map(({ year, val, color }) => val > 0 || year === selectedYear ? (
-                        <div key={year} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ color: C.muted, fontSize: 10, fontWeight: 600, minWidth: 32, textAlign: "right" }}>{year}</span>
+                      {years.map(({ year: y, val, color }) => val > 0 || y === selectedYear ? (
+                        <div key={y} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: C.muted, fontSize: 10, fontWeight: 600, minWidth: 32, textAlign: "right" }}>{y}</span>
                           <div style={{ flex: 1, height: 6, borderRadius: 3, background: `${C.muted}18`, overflow: "hidden" }}>
                             <div style={{
                               width: `${(val / maxRef3y) * 100}%`, height: "100%",
@@ -630,12 +747,12 @@ export default function Dashboard({
           )}
         </Card>
 
-        {/* ── ROW 5: Proyectos margen < 25% (solo terminados) ── */}
+        {/* ── ROW 5: Presupuestos margen < 25% (solo terminados) ── */}
         <Card style={{ borderTop: `3px solid ${C.red}66` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
             <STitle
-              title={`Proyectos margen bajo · ${currentYear}`}
-              sub="Proyectos terminados con margen final inferior al 25%"
+              title={`Presupuestos margen bajo · ${currentYear}`}
+              sub="Terminados y facturados con margen final inferior al 25%"
             />
             <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
               <div style={{
@@ -663,7 +780,7 @@ export default function Dashboard({
               ✓ Todos los proyectos terminados en {currentYear} superan el 25% de margen
             </p>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 10 }}>
               {margenBajo.proyectos.map((p, i) => (
                 <div key={i} style={{
                   padding: "10px 14px",
@@ -671,7 +788,7 @@ export default function Dashboard({
                   borderRadius: 10,
                   border: `1px solid ${C.red}33`,
                 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{
                         margin: 0, fontSize: 12, fontWeight: 700, color: C.white,
@@ -686,6 +803,18 @@ export default function Dashboard({
                         background: `${C.red}22`, borderRadius: 20, padding: "1px 8px",
                       }}>{p.margen}%</span>
                     </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                    <span style={{
+                      fontSize: 10, color: C.muted,
+                      background: `${C.muted}18`, borderRadius: 4, padding: "1px 6px",
+                    }}>{p.codigo}</span>
+                    {p.fechaFin !== "—" && (
+                      <span style={{
+                        fontSize: 10, color: C.muted,
+                        background: `${C.muted}18`, borderRadius: 4, padding: "1px 6px",
+                      }}>Fin: {p.fechaFin}</span>
+                    )}
                   </div>
                 </div>
               ))}

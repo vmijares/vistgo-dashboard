@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
       const id = c["ID"] as string;
       if (id) clientMap.set(id.trim(), {
         sector: ((c["Tipo cliente"] as string) || "Otros").trim(),
-        nombre: ((c["Razón Social"] as string) || (c["Nombre comercial"] as string) || "—").trim(),
+        nombre: ((c["Nombre comercial"] as string) || (c["Razón Social"] as string) || "—").trim(),
       });
     }
 
@@ -281,6 +281,19 @@ export async function GET(req: NextRequest) {
         .slice(0, 5);
     });
 
+    // ── Previsión hasta 31/12 por año (proyectos en ejecución) ──
+    const previsionMap = new Map<number, number>();
+    for (const p of proyectos) {
+      const year = Number(p["Year"]);
+      if (!year) continue;
+      const estado = ((p["Estado"] as string) || "").trim();
+      if (estado === "En ejecución") {
+        previsionMap.set(year, (previsionMap.get(year) ?? 0) + (Number(p["TFactura"]) || 0));
+      }
+    }
+    const previsionAnual: Record<number, number> = {};
+    previsionMap.forEach((v, y) => { previsionAnual[y] = Math.round(v); });
+
     // ── Proyectos con margen < 25% (año actual, solo terminados) ─
     const margenBajoList = proyectos
       .filter(p =>
@@ -292,6 +305,8 @@ export async function GET(req: NextRequest) {
       )
       .map(p => ({
         nombre: ((p["Nombre proyecto"] as string) || "—").trim(),
+        codigo: ((p["Código Proyecto"] as string) || "—").trim(),
+        fechaFin: ((p["Fecha término"] as string) || "—"),
         cliente: clientMap.get(((p["ID Cliente"] as string) || "").trim())?.nombre ?? "—",
         importe: Math.round(Number(p["TFactura"]) || 0),
         margen: Math.round(Number(p["% margen"]) || 0),
@@ -312,7 +327,7 @@ export async function GET(req: NextRequest) {
     const result = {
       ventasMargen, feeCv, proyectosMes, facturasMes, margenMes,
       sectores, topClientes, allClientes, ytdClientes, ytdTotals,
-      topProyectos, margenBajo, años, currentYear, todayMonth,
+      topProyectos, margenBajo, previsionAnual, años, currentYear, todayMonth,
     };
 
     _cache = { data: result, at: Date.now() };

@@ -11,7 +11,7 @@ type YtdCliente  = {
 };
 type MargenBajo  = {
   count: number; total: number;
-  proyectos: { nombre: string; cliente: string; importe: number; margen: number }[];
+  proyectos: { nombre: string; codigo: string; fechaFin: string; cliente: string; importe: number; margen: number }[];
 };
 
 type YtdTotals = {
@@ -32,6 +32,7 @@ type AppData = {
   ytdTotals:    YtdTotals;
   topProyectos: Record<number, TopProyecto[]>;
   margenBajo:   MargenBajo;
+  previsionAnual: Record<number, number>;
   años:         number[];
   currentYear:  number;
   todayMonth:   number;
@@ -93,6 +94,7 @@ export default function DashboardPage() {
       ytdTotals={data.ytdTotals}
       topProyectos={data.topProyectos}
       margenBajo={data.margenBajo}
+      previsionAnual={data.previsionAnual}
       años={data.años}
       currentYear={data.currentYear}
       todayMonth={data.todayMonth}

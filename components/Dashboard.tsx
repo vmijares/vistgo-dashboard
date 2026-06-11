@@ -31,7 +31,7 @@ interface YtdCliente  {
 }
 interface MargenBajo  {
   count: number; total: number;
-  proyectos: { alias: string; fechaFin: string; cliente: string; venta: number; margen: number }[];
+  proyectos: { nPresupuesto: string; alias: string; fechaFin: string; cliente: string; venta: number; margen: number }[];
 }
 interface YtdTotals {
   current: { ventas: number; margen: number; pct: number };
@@ -77,11 +77,9 @@ const MESES_CORTO_ES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","o
 const fmt = (v: number | string | undefined) => {
   const n = Number(v);
   if (!n) return "0";
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-  if (n >= 1000)    return `${Math.round(n / 1000)}K`;
-  return String(n);
+  return Math.round(n).toLocaleString("es-ES");
 };
-const fmtEur = (v: number | string | undefined) => `${fmt(v)}€`;
+const fmtEur = (v: number | string | undefined) => `${fmt(v)} €`;
 const deltaColor = (d: string | number) => Number(d) >= 0 ? C.lime : C.red;
 const deltaSign  = (d: string | number) => Number(d) >= 0 ? "▲" : "▼";
 
@@ -329,8 +327,8 @@ export default function Dashboard({
 
       <div style={{ padding: "24px 20px", maxWidth: 1280, margin: "0 auto" }}>
 
-        {/* ── KPIs — comparativa YTD por año seleccionado ── */}
-        <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+        {/* ── KPIs — fila 1: métricas YTD ── */}
+        <div style={{ display: "flex", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
           <KPI
             icon="💶"
             label={`Facturación ${mesRangeLabel} ${year}`}
@@ -358,11 +356,15 @@ export default function Dashboard({
               : `${ytdEjecActual} proyectos ejecutados`}
             accent={ytdDeltaEjec !== "—" ? deltaColor(ytdDeltaEjec) : C.lime2}
           />
+        </div>
+
+        {/* ── KPIs — fila 2: previsión, objetivo, histórico ── */}
+        <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
           <KPI
             icon="📋"
-            label={`En previsión hasta 31/12 · ${year}`}
+            label={`En previsión · ${mesRangeLabel}–hoy · ${year}`}
             value={prevision > 0 ? fmtEur(prevision) : "—"}
-            sub="Proyectos en ejecución"
+            sub="Presupuestos en ejecución · suma venta"
             accent={C.lila}
           />
           {/* Objetivo de margen — editable */}
@@ -470,7 +472,7 @@ export default function Dashboard({
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
                 <Bar yAxisId="eur" dataKey="actual"   name={`Fact. ${selectedYear}`}     fill={C.lime}        radius={[4, 4, 0, 0]} maxBarSize={28} />
-                <Bar yAxisId="eur" dataKey="anterior" name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill="#4a5586"      radius={[4, 4, 0, 0]} maxBarSize={28} />
+                <Bar yAxisId="eur" dataKey="anterior" name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill="#60a5fa"      radius={[4, 4, 0, 0]} maxBarSize={28} />
                 <Line yAxisId="pct" dataKey="margenPct" name="Margen %" stroke={C.lila} strokeWidth={2} dot={{ fill: C.lila, r: 3 }} connectNulls />
               </ComposedChart>
             </ResponsiveContainer>
@@ -498,7 +500,7 @@ export default function Dashboard({
               <Tooltip content={<CustomTooltip />} />
               <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
               <Bar yAxisId="eur" dataKey="actual"    name={`Fact. ${selectedYear}`}     fill={C.lime}        radius={[4, 4, 0, 0]} maxBarSize={60} />
-              <Bar yAxisId="eur" dataKey="anterior"  name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill="#4a5586"      radius={[4, 4, 0, 0]} maxBarSize={60} />
+              <Bar yAxisId="eur" dataKey="anterior"  name={`Fact. ${selectedYear ? selectedYear - 1 : "ant."}`} fill="#60a5fa"      radius={[4, 4, 0, 0]} maxBarSize={60} />
               <Line yAxisId="pct" dataKey="margenPct" name="Margen %" stroke={C.lila} strokeWidth={2} dot={{ fill: C.lila, r: 5 }} connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
@@ -533,7 +535,7 @@ export default function Dashboard({
                 <Tooltip content={<CustomTooltip isEur={false} />} />
                 <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
                 <Bar dataKey="actual"   name={`${selectedYear}`}             fill={C.lime}   radius={[4, 4, 0, 0]} maxBarSize={20} />
-                <Bar dataKey="anterior" name={`${selectedYear ? selectedYear - 1 : "ant."}`} fill="#4a5586" radius={[4, 4, 0, 0]} maxBarSize={20} />
+                <Bar dataKey="anterior" name={`${selectedYear ? selectedYear - 1 : "ant."}`} fill="#60a5fa" radius={[4, 4, 0, 0]} maxBarSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -784,7 +786,7 @@ export default function Dashboard({
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
                   <tr>
-                    {["Cliente", "Alias", "Fin", "Venta", "% Margen"].map(h => (
+                    {["Cliente", "N Pres.", "Alias", "Fin", "Venta", "% Margen"].map(h => (
                       <th key={h} style={{
                         padding: "6px 10px", textAlign: h === "Venta" || h === "% Margen" ? "right" : "left",
                         color: C.muted, fontSize: 10, fontWeight: 600, textTransform: "uppercase",
@@ -798,6 +800,12 @@ export default function Dashboard({
                     <tr key={i} style={{ borderBottom: `1px solid ${C.muted}15` }}>
                       <td style={{ padding: "8px 10px", color: C.white, fontWeight: 600, maxWidth: 160 }}>
                         <p style={{ margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.cliente}</p>
+                      </td>
+                      <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                        <span style={{
+                          fontSize: 11, color: C.lime2,
+                          background: `${C.lime}18`, borderRadius: 4, padding: "2px 7px",
+                        }}>{p.nPresupuesto}</span>
                       </td>
                       <td style={{ padding: "8px 10px", maxWidth: 260 }}>
                         <p style={{

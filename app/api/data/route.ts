@@ -79,8 +79,8 @@ export async function GET(req: NextRequest) {
       // No $select — field names have spaces
       fetchAll(`${base}/ProyectosEjecutados?$top=2000&$filter=Year ge ${minYear}`, token),
       fetchAll(`${base}/ClientesGraficos?$top=500`, token),
-      // Targeted fetch: only terminados y facturados del año actual (Estado filter reduces records ~30%)
-      fetchAll(`${base}/Presupuesto?$top=500&$filter=year eq ${currentYear} and Estado eq 'Terminado y facturado'`, token),
+      // All current-year presupuestos: used for both margenBajo and previsionAnual (Venta, En ejecución)
+      fetchAll(`${base}/Presupuesto?$top=600&$filter=year eq ${currentYear}`, token),
     ]);
 
     // Build client lookup map: UUID → { sector, nombre }
@@ -287,37 +287,47 @@ export async function GET(req: NextRequest) {
         .slice(0, 5);
     });
 
-    // ── Previsión hasta 31/12 por año (proyectos en ejecución) ──
+    // ── Previsión (suma Venta de presupuestos En ejecución, año actual) ──
+    // Past years: keep using ProyectosEjecutados TFactura for historical data
     const previsionMap = new Map<number, number>();
     for (const p of proyectos) {
       const year = Number(p["Year"]);
-      if (!year) continue;
+      if (!year || year === currentYear) continue;
       const estado = ((p["Estado"] as string) || "").trim();
       if (estado === "En ejecución") {
         previsionMap.set(year, (previsionMap.get(year) ?? 0) + (Number(p["TFactura"]) || 0));
       }
     }
+    // Current year: use Presupuesto.Venta (more accurate than ProyectosEjecutados.TFactura)
+    let previsionCurrentYear = 0;
+    for (const p of presupuestosMB) {
+      if (((p["Estado"] as string) || "").trim() === "En ejecución") {
+        previsionCurrentYear += Number(p["Venta"]) || 0;
+      }
+    }
+    previsionMap.set(currentYear, Math.round(previsionCurrentYear));
     const previsionAnual: Record<number, number> = {};
     previsionMap.forEach((v, y) => { previsionAnual[y] = Math.round(v); });
 
-    // ── Presupuestos margen bajo < 25% (año actual, terminados y facturados) ─
-    // Source: Presupuesto table — fields: Alias, Fecha término, Venta, Por sobre venta (margin %)
+    // ── Presupuestos margen bajo < 25% (año actual, terminados y facturados, sin Área=WEB) ─
     const margenBajoList = presupuestosMB
       .filter(p => {
         const porSobre = Number(p["Por sobre venta"]);
         return (
           p["Estado"] === "Terminado y facturado" &&
+          ((p["Área"] as string) || "").trim().toUpperCase() !== "WEB" &&
           porSobre > 0 &&
           porSobre < 25 &&
           Number(p["Venta"]) > 0
         );
       })
       .map(p => ({
-        alias:    ((p["Alias"] as string) || "—").trim(),
-        fechaFin: ((p["Fecha término"] as string) || "—"),
-        cliente:  clientMap.get(((p["ID Cliente"] as string) || "").trim())?.nombre ?? "—",
-        venta:    Math.round(Number(p["Venta"]) || 0),
-        margen:   Number(Number(p["Por sobre venta"]).toFixed(1)),
+        nPresupuesto: ((p["N Presupuesto"] as string) || "—").trim(),
+        alias:        ((p["Alias"] as string) || "—").trim(),
+        fechaFin:     ((p["Fecha término"] as string) || "—"),
+        cliente:      clientMap.get(((p["ID Cliente"] as string) || "").trim())?.nombre ?? "—",
+        venta:        Math.round(Number(p["Venta"]) || 0),
+        margen:       Number(Number(p["Por sobre venta"]).toFixed(1)),
       }))
       .sort((a, b) => b.venta - a.venta);
 

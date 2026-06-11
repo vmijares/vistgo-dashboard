@@ -11,7 +11,7 @@ type YtdCliente  = {
 };
 type MargenBajo  = {
   count: number; total: number;
-  proyectos: { alias: string; fechaFin: string; cliente: string; venta: number; margen: number }[];
+  proyectos: { nPresupuesto: string; alias: string; fechaFin: string; cliente: string; venta: number; margen: number }[];
 };
 
 type YtdTotals = {

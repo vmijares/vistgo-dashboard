@@ -218,7 +218,7 @@ export default function Dashboard({
   const ytdDeltaEjec  = ytdEjecPrev > 0
     ? (((ytdEjecActual - ytdEjecPrev) / ytdEjecPrev) * 100).toFixed(1) : "—";
 
-  const mesRangeLabel = `${MESES_CORTO_ES[0]}–${MESES_CORTO_ES[todayMonth - 1]}`;
+  const mesRangeLabel = `${MESES_CORTO_ES[0]}–hoy`;
 
   // Previsión hasta 31/12
   const prevision = previsionAnual[year] ?? 0;
@@ -362,7 +362,7 @@ export default function Dashboard({
         <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
           <KPI
             icon="📋"
-            label={`En previsión · ${mesRangeLabel}–hoy · ${year}`}
+            label={`En previsión · ${mesRangeLabel} · ${year}`}
             value={prevision > 0 ? fmtEur(prevision) : "—"}
             sub="Presupuestos en ejecución · suma venta"
             accent={C.lila}
@@ -587,7 +587,7 @@ export default function Dashboard({
           {/* YTD facturación + margen vs año anterior */}
           <Card style={{ margin: 0 }}>
             <STitle
-              title={`Facturación hasta ${MESES_NOMBRE[todayMonth - 1]}`}
+              title={`Facturación ${mesRangeLabel}`}
               sub={`Por cliente · ${year} vs ${year - 1} · mismas fechas`}
             />
             {ytdClientes.length === 0 ? (

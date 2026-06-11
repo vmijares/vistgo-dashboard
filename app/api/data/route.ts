@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
   try {
     // Parallel fetch of all source tables
     // $top=2000 fetches all records in one request instead of paginating 100/page sequentially
-    const [facturas, presupuestos, proyectos, clientes, presupuestosMB] = await Promise.all([
+    const [facturas, presupuestos, proyectos, clientes, presupuestosMB, objetivosRaw] = await Promise.all([
       fetchAll(`${base}/Factura?$top=2000&$filter=Year ge ${minYear}`, token),
       // $select works here because year, FEEGraph, CVGraph have no spaces
       fetchAll(`${base}/Presupuesto?$top=2000&$filter=year ge ${minYear}&$select=year,FEEGraph,CVGraph`, token),
@@ -81,6 +81,7 @@ export async function GET(req: NextRequest) {
       fetchAll(`${base}/ClientesGraficos?$top=500`, token),
       // Full fields for margenBajoByYear + previsionAnual (all years, grouped client-side by Fecha término)
       fetchAll(`${base}/Presupuesto?$top=2000&$filter=year ge ${minYear}`, token),
+      fetchAll(`${base}/ObjetivoAnual?$top=50`, token),
     ]);
 
     // Build client lookup map: UUID → { sector, nombre }
@@ -287,6 +288,13 @@ export async function GET(req: NextRequest) {
         .slice(0, 5);
     });
 
+    // ── Objetivos anuales de margen ───────────────────────────────────────
+    const objetivosAnuales: Record<number, number> = {};
+    for (const o of objetivosRaw) {
+      const y = Number(o["Year"]);
+      if (y) objetivosAnuales[y] = Number(o["Objetivo"]) || 0;
+    }
+
     // ── Previsión (suma Venta de presupuestos En ejecución) ──────────────
     // Past years: ProyectosEjecutados TFactura for historical; current year: Presupuesto.Venta
     const previsionMap = new Map<number, number>();
@@ -354,7 +362,7 @@ export async function GET(req: NextRequest) {
     const result = {
       ventasMargen, feeCv, proyectosMes, facturasMes, margenMes,
       sectores, topClientes, allClientes, ytdClientes, ytdTotals,
-      topProyectos, margenBajoByYear, previsionAnual, años, currentYear, todayMonth,
+      topProyectos, margenBajoByYear, previsionAnual, objetivosAnuales, años, currentYear, todayMonth,
     };
 
     _cache = { data: result, at: Date.now() };

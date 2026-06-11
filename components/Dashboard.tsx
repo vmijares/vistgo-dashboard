@@ -52,6 +52,7 @@ interface DashboardProps {
   topProyectos:  Record<number, TopProyecto[]>;
   margenBajoByYear: Record<number, MargenBajo>;
   previsionAnual: Record<number, number>;
+  objetivosAnuales: Record<number, number>;
   años:          number[];
   currentYear:   number;
   todayMonth:    number;
@@ -164,13 +165,10 @@ const YearPill = ({
 export default function Dashboard({
   ventasMargen, feeCv, proyectosMes, facturasMes, margenMes,
   sectores, topClientes, allClientes, ytdClientes, ytdTotals,
-  topProyectos, margenBajoByYear, previsionAnual,
+  topProyectos, margenBajoByYear, previsionAnual, objetivosAnuales,
   años, currentYear, todayMonth, onLogout,
 }: DashboardProps) {
   const [selectedYear, setSelectedYear] = useState<number>(0);
-  const [objetivos, setObjetivos] = useState<Record<number, number>>({});
-  const [editingObj, setEditingObj] = useState(false);
-  const [objInput, setObjInput] = useState("");
 
   // suppress unused
   void ytdTotals;
@@ -179,24 +177,6 @@ export default function Dashboard({
   useEffect(() => {
     if (años.length > 0) setSelectedYear(años[años.length - 1]);
   }, [años]);
-
-  // Load objectives from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("vistgo_objetivo_margen");
-      if (saved) setObjetivos(JSON.parse(saved));
-    } catch { /* ignore */ }
-  }, []);
-
-  const saveObjetivo = (val: string) => {
-    const num = Number(val.replace(/[^\d]/g, ""));
-    if (num >= 0) {
-      const updated = { ...objetivos, [selectedYear]: num };
-      setObjetivos(updated);
-      localStorage.setItem("vistgo_objetivo_margen", JSON.stringify(updated));
-    }
-    setEditingObj(false);
-  };
 
   // ── KPIs — recalculated from facturasMes/margenMes for selectedYear ──
   const year = selectedYear || currentYear;
@@ -224,8 +204,8 @@ export default function Dashboard({
   // Previsión hasta 31/12
   const prevision = previsionAnual[year] ?? 0;
 
-  // Objetivo margen
-  const objetivo = objetivos[year] ?? 0;
+  // Objetivo margen (desde FileMaker ObjetivoAnual)
+  const objetivo = objetivosAnuales[year] ?? 0;
   const pctObj   = objetivo > 0 ? (ytdM / objetivo) * 100 : 0;
 
   const avgMargen = ventasMargen.length > 0
@@ -368,48 +348,13 @@ export default function Dashboard({
             sub="Presupuestos en ejecución · suma venta"
             accent={C.lila}
           />
-          {/* Objetivo de margen — editable */}
-          <div style={{
-            background: C.navyM, borderRadius: 14, padding: "18px 20px",
-            borderTop: `3px solid ${objetivo > 0 ? (pctObj >= 100 ? C.lime : pctObj >= 75 ? C.lime2 : C.red) : C.muted}`,
-            flex: "1 1 160px", minWidth: 140, position: "relative", overflow: "hidden",
-          }}>
-            <div style={{ position: "absolute", top: 10, right: 14, fontSize: 20, opacity: 0.15 }}>🎯</div>
-            <p style={{ color: C.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, margin: 0, fontWeight: 600 }}>
-              Objetivo margen {year}
-            </p>
-            <p style={{ color: C.white, fontSize: 26, fontWeight: 800, margin: "6px 0 2px", lineHeight: 1 }}>
-              {objetivo > 0 ? `${pctObj.toFixed(1)}%` : "—"}
-            </p>
-            {objetivo > 0 && (
-              <p style={{ color: pctObj >= 100 ? C.lime : pctObj >= 75 ? C.lime2 : C.red, fontSize: 11, margin: "0 0 6px", fontWeight: 500 }}>
-                {fmtEur(ytdM)} de {fmtEur(objetivo)}
-              </p>
-            )}
-            {editingObj ? (
-              <input
-                autoFocus
-                type="number"
-                defaultValue={objetivo || ""}
-                placeholder="Ej: 650000"
-                onBlur={e => saveObjetivo(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") saveObjetivo((e.target as HTMLInputElement).value); if (e.key === "Escape") setEditingObj(false); }}
-                style={{
-                  background: `${C.navy}`, border: `1px solid ${C.lime}55`,
-                  borderRadius: 6, padding: "4px 8px", color: C.white,
-                  fontSize: 12, width: "100%", fontFamily: "'DM Sans',sans-serif", marginTop: 4,
-                }}
-              />
-            ) : (
-              <button onClick={() => { setObjInput(String(objetivo || "")); setEditingObj(true); }} style={{
-                background: "transparent", border: `1px solid ${C.muted}33`,
-                borderRadius: 6, padding: "3px 8px", color: C.muted,
-                fontSize: 10, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
-              }}>
-                {objetivo > 0 ? `Objetivo: ${fmtEur(objetivo)}` : "Configura objetivo"}
-              </button>
-            )}
-          </div>
+          <KPI
+            icon="🎯"
+            label={`Objetivo margen ${year}`}
+            value={objetivo > 0 ? `${pctObj.toFixed(1)}%` : "—"}
+            sub={objetivo > 0 ? `${fmtEur(ytdM)} de ${fmtEur(objetivo)}` : "Sin objetivo configurado"}
+            accent={objetivo > 0 ? (pctObj >= 100 ? C.lime : pctObj >= 75 ? C.lime2 : C.red) : C.muted}
+          />
           <KPI
             icon="⭐"
             label={`Margen acumulado ${ventasMargen.length}a`}

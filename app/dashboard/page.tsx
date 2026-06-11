@@ -33,6 +33,7 @@ type AppData = {
   topProyectos: Record<number, TopProyecto[]>;
   margenBajoByYear: Record<number, MargenBajo>;
   previsionAnual: Record<number, number>;
+  objetivosAnuales: Record<number, number>;
   años:         number[];
   currentYear:  number;
   todayMonth:   number;
@@ -94,6 +95,7 @@ export default function DashboardPage() {
       ytdTotals={data.ytdTotals}
       topProyectos={data.topProyectos}
       margenBajoByYear={data.margenBajoByYear}
+      objetivosAnuales={data.objetivosAnuales}
       previsionAnual={data.previsionAnual}
       años={data.años}
       currentYear={data.currentYear}

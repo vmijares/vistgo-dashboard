@@ -6,9 +6,9 @@ import https from "node:https";
 // keepAlive: false — FM no acumula conexiones abiertas entre invocaciones warm
 const agent = new https.Agent({ rejectUnauthorized: false, keepAlive: false });
 
-// ── Server-side cache (5 min TTL) ────────────────────────────
+// ── Server-side cache (15 min TTL) ───────────────────────────
 let _cache: { data: unknown; at: number } | null = null;
-const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL = 15 * 60 * 1000;
 
 function fmFetch(url: string, token: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
@@ -71,16 +71,16 @@ export async function GET(req: NextRequest) {
 
   try {
     // Parallel fetch of all source tables
+    // $top=2000 fetches all records in one request instead of paginating 100/page sequentially
     const [facturas, presupuestos, proyectos, clientes, presupuestosMB] = await Promise.all([
-      fetchAll(`${base}/Factura?$filter=Year ge ${minYear}`, token),
+      fetchAll(`${base}/Factura?$top=2000&$filter=Year ge ${minYear}`, token),
       // $select works here because year, FEEGraph, CVGraph have no spaces
-      fetchAll(`${base}/Presupuesto?$filter=year ge ${minYear}&$select=year,FEEGraph,CVGraph`, token),
-      // No $select — "Nombre proyecto", "ID Cliente", "% margen" have spaces
-      fetchAll(`${base}/ProyectosEjecutados?$filter=Year ge ${minYear}`, token),
-      // $top=500 avoids extra pagination for lookup table; can't $select (spaces)
+      fetchAll(`${base}/Presupuesto?$top=2000&$filter=year ge ${minYear}&$select=year,FEEGraph,CVGraph`, token),
+      // No $select — field names have spaces
+      fetchAll(`${base}/ProyectosEjecutados?$top=2000&$filter=Year ge ${minYear}`, token),
       fetchAll(`${base}/ClientesGraficos?$top=500`, token),
-      // Targeted fetch for presupuestos margen bajo (current year only, no $select — field names have spaces)
-      fetchAll(`${base}/Presupuesto?$filter=year eq ${currentYear}`, token),
+      // Targeted fetch: only terminados y facturados del año actual (Estado filter reduces records ~30%)
+      fetchAll(`${base}/Presupuesto?$top=500&$filter=year eq ${currentYear} and Estado eq 'Terminado y facturado'`, token),
     ]);
 
     // Build client lookup map: UUID → { sector, nombre }

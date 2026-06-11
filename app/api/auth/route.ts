@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
   const server = process.env.FM_SERVER!;
   const db = process.env.FM_DATABASE!;
   const token = `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
-  const url = `${server}/fmi/odata/v4/${encodeURIComponent(db)}/Graficas?$top=1`;
+  // Validate credentials via OData service document — lightweight, no table data computed
+  const url = `${server}/fmi/odata/v4/${encodeURIComponent(db)}`;
 
   try {
     const res = await fmFetch(url, token);

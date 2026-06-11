@@ -31,7 +31,7 @@ type AppData = {
   ytdClientes:  YtdCliente[];
   ytdTotals:    YtdTotals;
   topProyectos: Record<number, TopProyecto[]>;
-  margenBajo:   MargenBajo;
+  margenBajoByYear: Record<number, MargenBajo>;
   previsionAnual: Record<number, number>;
   años:         number[];
   currentYear:  number;
@@ -93,7 +93,7 @@ export default function DashboardPage() {
       ytdClientes={data.ytdClientes}
       ytdTotals={data.ytdTotals}
       topProyectos={data.topProyectos}
-      margenBajo={data.margenBajo}
+      margenBajoByYear={data.margenBajoByYear}
       previsionAnual={data.previsionAnual}
       años={data.años}
       currentYear={data.currentYear}

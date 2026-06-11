@@ -50,7 +50,7 @@ interface DashboardProps {
   ytdClientes:   YtdCliente[];
   ytdTotals:     YtdTotals;
   topProyectos:  Record<number, TopProyecto[]>;
-  margenBajo:    MargenBajo;
+  margenBajoByYear: Record<number, MargenBajo>;
   previsionAnual: Record<number, number>;
   años:          number[];
   currentYear:   number;
@@ -164,7 +164,7 @@ const YearPill = ({
 export default function Dashboard({
   ventasMargen, feeCv, proyectosMes, facturasMes, margenMes,
   sectores, topClientes, allClientes, ytdClientes, ytdTotals,
-  topProyectos, margenBajo, previsionAnual,
+  topProyectos, margenBajoByYear, previsionAnual,
   años, currentYear, todayMonth, onLogout,
 }: DashboardProps) {
   const [selectedYear, setSelectedYear] = useState<number>(0);
@@ -200,6 +200,7 @@ export default function Dashboard({
 
   // ── KPIs — recalculated from facturasMes/margenMes for selectedYear ──
   const year = selectedYear || currentYear;
+  const margenBajo = margenBajoByYear[year] ?? { count: 0, total: 0, proyectos: [] };
   const ytdV  = (facturasMes[year]   ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
   const ytdVp = (facturasMes[year-1] ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
   const ytdM  = (margenMes[year]     ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);

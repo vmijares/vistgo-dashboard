@@ -72,17 +72,15 @@ export async function GET(req: NextRequest) {
   try {
     // Parallel fetch of all source tables
     // $top=2000 fetches all records in one request instead of paginating 100/page sequentially
-    const [facturas, presupuestos, proyectos, clientes, presupuestosMB, webPresupuestos] = await Promise.all([
+    const [facturas, presupuestos, proyectos, clientes, presupuestosMB] = await Promise.all([
       fetchAll(`${base}/Factura?$top=2000&$filter=Year ge ${minYear}`, token),
       // $select works here because year, FEEGraph, CVGraph have no spaces
       fetchAll(`${base}/Presupuesto?$top=2000&$filter=year ge ${minYear}&$select=year,FEEGraph,CVGraph`, token),
       // No $select — field names have spaces
       fetchAll(`${base}/ProyectosEjecutados?$top=2000&$filter=Year ge ${minYear}`, token),
       fetchAll(`${base}/ClientesGraficos?$top=500`, token),
-      // year = creation year; presupuestos created last year may terminate this year → fetch 2 years
-      fetchAll(`${base}/Presupuesto?$top=1000&$filter=year ge ${currentYear - 1}`, token),
-      // WEB presupuesto UUIDs for exclusion from margenBajo
-      fetchAll(`${base}/Presupuestos_WEB?$top=200`, token),
+      // Full fields for margenBajoByYear + previsionAnual (all years, grouped client-side by Fecha término)
+      fetchAll(`${base}/Presupuesto?$top=2000&$filter=year ge ${minYear}`, token),
     ]);
 
     // Build client lookup map: UUID → { sector, nombre }
@@ -289,24 +287,23 @@ export async function GET(req: NextRequest) {
         .slice(0, 5);
     });
 
-    // Build WEB presupuesto UUID exclusion set (Presupuestos_WEB.ID Presupuesto = Presupuesto.ID UUID)
-    const webUUIDs = new Set(webPresupuestos.map(w => ((w["ID Presupuesto"] as string) || "").trim()));
-
-    // ── Previsión (suma Venta de presupuestos En ejecución, año actual) ──
-    // Past years: keep using ProyectosEjecutados TFactura for historical data
+    // ── Previsión (suma Venta de presupuestos En ejecución) ──────────────
+    // Past years: ProyectosEjecutados TFactura for historical; current year: Presupuesto.Venta
     const previsionMap = new Map<number, number>();
     for (const p of proyectos) {
       const year = Number(p["Year"]);
       if (!year || year === currentYear) continue;
-      const estado = ((p["Estado"] as string) || "").trim();
-      if (estado === "En ejecución") {
+      if (((p["Estado"] as string) || "").trim() === "En ejecución") {
         previsionMap.set(year, (previsionMap.get(year) ?? 0) + (Number(p["TFactura"]) || 0));
       }
     }
-    // Current year: use Presupuesto.Venta (more accurate than ProyectosEjecutados.TFactura)
     let previsionCurrentYear = 0;
     for (const p of presupuestosMB) {
-      if (((p["Estado"] as string) || "").trim() === "En ejecución") {
+      const fechaTermino = ((p["Fecha término"] as string) || "");
+      if (
+        ((p["Estado"] as string) || "").trim() === "En ejecución" &&
+        fechaTermino.startsWith(String(currentYear))
+      ) {
         previsionCurrentYear += Number(p["Venta"]) || 0;
       }
     }
@@ -314,38 +311,40 @@ export async function GET(req: NextRequest) {
     const previsionAnual: Record<number, number> = {};
     previsionMap.forEach((v, y) => { previsionAnual[y] = Math.round(v); });
 
-    // ── Presupuestos margen bajo < 25% (terminados y facturados este año, sin WEB) ─
-    // Filter by Fecha término year (not creation year) to catch 2025-created / 2026-terminated presupuestos
-    // Exclude WEB presupuestos via Presupuestos_WEB UUID set
-    const margenBajoList = presupuestosMB
-      .filter(p => {
-        const porSobre = Number(p["Por sobre venta"]);
-        const uuid = ((p["ID UUID"] as string) || "").trim();
-        const fechaTermino = ((p["Fecha término"] as string) || "");
-        return (
-          p["Estado"] === "Terminado y facturado" &&
-          fechaTermino.startsWith(String(currentYear)) &&
-          !webUUIDs.has(uuid) &&
-          porSobre > 0 &&
-          porSobre < 25 &&
-          Number(p["Venta"]) > 0
-        );
-      })
-      .map(p => ({
+    // ── Presupuestos margen bajo < 25% agrupados por año de Fecha término ──
+    // Área = "WEB" → exclude; filter by Fecha término year (not creation year)
+    type MargenRow = { nPresupuesto: string; alias: string; fechaFin: string; cliente: string; venta: number; margen: number };
+    const mbByYear = new Map<number, MargenRow[]>();
+    for (const p of presupuestosMB) {
+      const porSobre = Number(p["Por sobre venta"]);
+      const fechaTermino = ((p["Fecha término"] as string) || "");
+      const ftYear = Number(fechaTermino.substring(0, 4));
+      if (
+        p["Estado"] !== "Terminado y facturado" ||
+        !ftYear ||
+        ((p["Área"] as string) || "").trim().toUpperCase() === "WEB" ||
+        porSobre <= 0 || porSobre >= 25 ||
+        Number(p["Venta"]) <= 0
+      ) continue;
+      if (!mbByYear.has(ftYear)) mbByYear.set(ftYear, []);
+      mbByYear.get(ftYear)!.push({
         nPresupuesto: ((p["N Presupuesto"] as string) || "—").trim(),
         alias:        ((p["Alias"] as string) || "—").trim(),
-        fechaFin:     ((p["Fecha término"] as string) || "—"),
+        fechaFin:     fechaTermino,
         cliente:      clientMap.get(((p["ID Cliente"] as string) || "").trim())?.nombre ?? "—",
         venta:        Math.round(Number(p["Venta"]) || 0),
         margen:       Number(Number(p["Por sobre venta"]).toFixed(1)),
-      }))
-      .sort((a, b) => b.venta - a.venta);
-
-    const margenBajo = {
-      count: margenBajoList.length,
-      total: Math.round(margenBajoList.reduce((s, p) => s + p.venta, 0)),
-      proyectos: margenBajoList,
-    };
+      });
+    }
+    const margenBajoByYear: Record<number, { count: number; total: number; proyectos: MargenRow[] }> = {};
+    mbByYear.forEach((list, year) => {
+      const sorted = list.sort((a, b) => b.venta - a.venta);
+      margenBajoByYear[year] = {
+        count: sorted.length,
+        total: Math.round(sorted.reduce((s, r) => s + r.venta, 0)),
+        proyectos: sorted,
+      };
+    });
 
     // ── Años disponibles ──────────────────────────────────────
     const añosSet: number[] = [];
@@ -355,7 +354,7 @@ export async function GET(req: NextRequest) {
     const result = {
       ventasMargen, feeCv, proyectosMes, facturasMes, margenMes,
       sectores, topClientes, allClientes, ytdClientes, ytdTotals,
-      topProyectos, margenBajo, previsionAnual, años, currentYear, todayMonth,
+      topProyectos, margenBajoByYear, previsionAnual, años, currentYear, todayMonth,
     };
 
     _cache = { data: result, at: Date.now() };

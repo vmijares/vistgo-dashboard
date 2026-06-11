@@ -322,7 +322,7 @@ export async function GET(req: NextRequest) {
       if (
         p["Estado"] !== "Terminado y facturado" ||
         !ftYear ||
-        ((p["Área"] as string) || "").trim().toUpperCase() === "WEB" ||
+        ((p["Área"] as string) || "").trim().toUpperCase().includes("WEB") ||
         porSobre <= 0 || porSobre >= 25 ||
         Number(p["Venta"]) <= 0
       ) continue;

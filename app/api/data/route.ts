@@ -72,15 +72,17 @@ export async function GET(req: NextRequest) {
   try {
     // Parallel fetch of all source tables
     // $top=2000 fetches all records in one request instead of paginating 100/page sequentially
-    const [facturas, presupuestos, proyectos, clientes, presupuestosMB] = await Promise.all([
+    const [facturas, presupuestos, proyectos, clientes, presupuestosMB, webPresupuestos] = await Promise.all([
       fetchAll(`${base}/Factura?$top=2000&$filter=Year ge ${minYear}`, token),
       // $select works here because year, FEEGraph, CVGraph have no spaces
       fetchAll(`${base}/Presupuesto?$top=2000&$filter=year ge ${minYear}&$select=year,FEEGraph,CVGraph`, token),
       // No $select — field names have spaces
       fetchAll(`${base}/ProyectosEjecutados?$top=2000&$filter=Year ge ${minYear}`, token),
       fetchAll(`${base}/ClientesGraficos?$top=500`, token),
-      // All current-year presupuestos: used for both margenBajo and previsionAnual (Venta, En ejecución)
-      fetchAll(`${base}/Presupuesto?$top=600&$filter=year eq ${currentYear}`, token),
+      // year = creation year; presupuestos created last year may terminate this year → fetch 2 years
+      fetchAll(`${base}/Presupuesto?$top=1000&$filter=year ge ${currentYear - 1}`, token),
+      // WEB presupuesto UUIDs for exclusion from margenBajo
+      fetchAll(`${base}/Presupuestos_WEB?$top=200`, token),
     ]);
 
     // Build client lookup map: UUID → { sector, nombre }
@@ -287,6 +289,9 @@ export async function GET(req: NextRequest) {
         .slice(0, 5);
     });
 
+    // Build WEB presupuesto UUID exclusion set (Presupuestos_WEB.ID Presupuesto = Presupuesto.ID UUID)
+    const webUUIDs = new Set(webPresupuestos.map(w => ((w["ID Presupuesto"] as string) || "").trim()));
+
     // ── Previsión (suma Venta de presupuestos En ejecución, año actual) ──
     // Past years: keep using ProyectosEjecutados TFactura for historical data
     const previsionMap = new Map<number, number>();
@@ -309,13 +314,18 @@ export async function GET(req: NextRequest) {
     const previsionAnual: Record<number, number> = {};
     previsionMap.forEach((v, y) => { previsionAnual[y] = Math.round(v); });
 
-    // ── Presupuestos margen bajo < 25% (año actual, terminados y facturados, sin Área=WEB) ─
+    // ── Presupuestos margen bajo < 25% (terminados y facturados este año, sin WEB) ─
+    // Filter by Fecha término year (not creation year) to catch 2025-created / 2026-terminated presupuestos
+    // Exclude WEB presupuestos via Presupuestos_WEB UUID set
     const margenBajoList = presupuestosMB
       .filter(p => {
         const porSobre = Number(p["Por sobre venta"]);
+        const uuid = ((p["ID UUID"] as string) || "").trim();
+        const fechaTermino = ((p["Fecha término"] as string) || "");
         return (
           p["Estado"] === "Terminado y facturado" &&
-          ((p["Área"] as string) || "").trim().toUpperCase() !== "WEB" &&
+          fechaTermino.startsWith(String(currentYear)) &&
+          !webUUIDs.has(uuid) &&
           porSobre > 0 &&
           porSobre < 25 &&
           Number(p["Venta"]) > 0

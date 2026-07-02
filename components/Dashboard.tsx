@@ -187,10 +187,16 @@ export default function Dashboard({
   // ── KPIs — recalculated from facturasMes/margenMes for selectedYear ──
   const year = selectedYear || currentYear;
   const margenBajo = margenBajoByYear[year] ?? { count: 0, total: 0, proyectos: [] };
-  const ytdV  = (facturasMes[year]   ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
-  const ytdVp = (facturasMes[year-1] ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
-  const ytdM  = (margenMes[year]     ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
-  const ytdMp = (margenMes[year-1]   ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
+
+  // Usar solo meses COMPLETOS para que la comparativa sea justa:
+  // si hoy es 2 de julio, julio 2026 tiene 0€ pero julio 2025 tiene 161K€ → sesga el %
+  const completedMonths = year === currentYear ? todayMonth - 1 : todayMonth;
+  const sliceN = completedMonths > 0 ? completedMonths : 1;
+
+  const ytdV  = (facturasMes[year]   ?? []).slice(0, sliceN).reduce((a, b) => a + b, 0);
+  const ytdVp = (facturasMes[year-1] ?? []).slice(0, sliceN).reduce((a, b) => a + b, 0);
+  const ytdM  = (margenMes[year]     ?? []).slice(0, sliceN).reduce((a, b) => a + b, 0);
+  const ytdMp = (margenMes[year-1]   ?? []).slice(0, sliceN).reduce((a, b) => a + b, 0);
   const ytdMpct  = ytdV  > 0 ? ytdM  / ytdV  * 100 : 0;
   const ytdMpctP = ytdVp > 0 ? ytdMp / ytdVp * 100 : 0;
 
@@ -200,12 +206,15 @@ export default function Dashboard({
     ? (ytdMpct - ytdMpctP).toFixed(1) : "—";
 
   // YTD project count
-  const ytdEjecActual = (proyectosMes[year]   ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
-  const ytdEjecPrev   = (proyectosMes[year-1] ?? []).slice(0, todayMonth).reduce((a, b) => a + b, 0);
+  const ytdEjecActual = (proyectosMes[year]   ?? []).slice(0, sliceN).reduce((a, b) => a + b, 0);
+  const ytdEjecPrev   = (proyectosMes[year-1] ?? []).slice(0, sliceN).reduce((a, b) => a + b, 0);
   const ytdDeltaEjec  = ytdEjecPrev > 0
     ? (((ytdEjecActual - ytdEjecPrev) / ytdEjecPrev) * 100).toFixed(1) : "—";
 
-  const mesRangeLabel = `${MESES_CORTO_ES[0]}–hoy`;
+  const lastMonthName = MESES_CORTO_ES[sliceN - 1] ?? MESES_CORTO_ES[0];
+  const mesRangeLabel = sliceN === 1
+    ? lastMonthName
+    : `${MESES_CORTO_ES[0]}–${lastMonthName}`;
 
   // Previsión hasta 31/12
   const prevision = previsionAnual[year] ?? 0;

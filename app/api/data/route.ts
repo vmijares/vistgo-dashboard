@@ -72,15 +72,12 @@ export async function GET(req: NextRequest) {
   try {
     // Parallel fetch of all source tables
     // $top=2000 fetches all records in one request instead of paginating 100/page sequentially
-    const [facturas, presupuestos, proyectos, clientes, presupuestosMB, objetivosRaw] = await Promise.all([
+    // Single Presupuesto fetch (Fecha ge avoids unreliable calc field 'year' in OData filter)
+    const [facturas, presupuestos, proyectos, clientes, objetivosRaw] = await Promise.all([
       fetchAll(`${base}/Factura?$top=2000&$filter=Year ge ${minYear}`, token),
-      // $select works here because year, FEEGraph, CVGraph have no spaces
-      fetchAll(`${base}/Presupuesto?$top=2000&$filter=year ge ${minYear}&$select=year,FEEGraph,CVGraph`, token),
-      // No $select — field names have spaces
+      fetchAll(`${base}/Presupuesto?$top=2000&$filter=Fecha ge ${minYear}-01-01`, token),
       fetchAll(`${base}/ProyectosEjecutados?$top=2000&$filter=Year ge ${minYear}`, token),
       fetchAll(`${base}/ClientesGraficos?$top=500`, token),
-      // Full fields for margenBajoByYear + previsionAnual (all years, grouped client-side by Fecha término)
-      fetchAll(`${base}/Presupuesto?$top=2000&$filter=year ge ${minYear}`, token),
       fetchAll(`${base}/ObjetivoAnual?$top=50`, token),
     ]);
 
@@ -116,6 +113,7 @@ export async function GET(req: NextRequest) {
     // ── FEE / CV per year ─────────────────────────────────────
     const feeCvMap = new Map<number, { fee: number; cv: number }>();
     for (const p of presupuestos) {
+      if (((p["Estado"] as string) || "").trim() !== "Terminado y facturado") continue;
       const year = Number(p["year"]);
       if (!year) continue;
       const cur = feeCvMap.get(year) ?? { fee: 0, cv: 0 };
@@ -306,7 +304,7 @@ export async function GET(req: NextRequest) {
       }
     }
     let previsionCurrentYear = 0;
-    for (const p of presupuestosMB) {
+    for (const p of presupuestos) {
       const fechaTermino = ((p["Fecha término"] as string) || "");
       if (
         ((p["Estado"] as string) || "").trim() === "En ejecución" &&
@@ -323,10 +321,11 @@ export async function GET(req: NextRequest) {
     // Área = "WEB" → exclude; filter by Fecha término year (not creation year)
     type MargenRow = { nPresupuesto: string; alias: string; fechaFin: string; cliente: string; venta: number; margen: number };
     const mbByYear = new Map<number, MargenRow[]>();
-    for (const p of presupuestosMB) {
+    for (const p of presupuestos) {
       const porSobre = Number(p["Por sobre venta"]);
       const fechaTermino = ((p["Fecha término"] as string) || "");
-      const ftYear = Number(fechaTermino.substring(0, 4));
+      // Fallback to creation year if Fecha término is not filled in FM
+      const ftYear = Number(fechaTermino.substring(0, 4)) || Number(p["year"]) || 0;
       if (
         p["Estado"] !== "Terminado y facturado" ||
         !ftYear ||

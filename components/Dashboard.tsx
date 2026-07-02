@@ -85,7 +85,7 @@ const deltaColor = (d: string | number) => Number(d) >= 0 ? C.lime : C.red;
 const deltaSign  = (d: string | number) => Number(d) >= 0 ? "▲" : "▼";
 
 // ── Tooltip ───────────────────────────────────────────────────
-interface TooltipPayloadItem { color: string; name: string; value: number }
+interface TooltipPayloadItem { color: string; name: string; value: number; dataKey?: string }
 const CustomTooltip = ({
   active, payload, label, isEur = true,
 }: {
@@ -99,11 +99,17 @@ const CustomTooltip = ({
       boxShadow: "0 8px 32px #00000066",
     }}>
       <p style={{ color: C.lime, fontWeight: 700, margin: "0 0 6px" }}>{label}</p>
-      {payload.map((p, i) => (
-        <p key={i} style={{ color: p.color, margin: "2px 0" }}>
-          {p.name}: <strong>{isEur ? fmtEur(p.value) : p.value}</strong>
-        </p>
-      ))}
+      {payload.map((p, i) => {
+        const key = String(p.dataKey ?? p.name ?? "").toLowerCase();
+        const formatted = key.includes("pct") || key.includes("margen %")
+          ? `${Number(p.value).toFixed(1)}%`
+          : isEur ? fmtEur(p.value) : String(p.value);
+        return (
+          <p key={i} style={{ color: p.color, margin: "2px 0" }}>
+            {p.name}: <strong>{formatted}</strong>
+          </p>
+        );
+      })}
     </div>
   );
 };

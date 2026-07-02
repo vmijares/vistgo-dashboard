@@ -208,6 +208,8 @@ export async function GET(req: NextRequest) {
     });
 
     // ── YTD facturación + margen por cliente vs año anterior ──
+    // Usar solo meses completos para comparativa justa (igual que KPIs)
+    const completedMonth = todayMonth > 1 ? todayMonth - 1 : 1;
     const ytdMap = new Map<string, { actual: number; margenAct: number; anterior: number; margenAnt: number }>();
     for (const f of facturas) {
       const year = Number(f["Year"]);
@@ -215,7 +217,7 @@ export async function GET(req: NextRequest) {
       const id = ((f["ID Cliente"] as string) || "").trim();
       const base = Number(f["BaseListado"]) || 0;
       const marg = Number(f["MargenListado"]) || 0;
-      if (!id || month > todayMonth) continue;
+      if (!id || month > completedMonth) continue;
       if (year === currentYear) {
         const cur = ytdMap.get(id) ?? { actual: 0, margenAct: 0, anterior: 0, margenAnt: 0 };
         cur.actual += base; cur.margenAct += marg;

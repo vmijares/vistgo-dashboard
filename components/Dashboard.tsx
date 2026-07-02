@@ -580,11 +580,11 @@ export default function Dashboard({
                           {delta !== "—" && delta !== "new" && (
                             <div>
                               <span style={{ fontSize: 10, color: deltaColor(delta), fontWeight: 700 }}>
-                                {deltaSign(delta)}{Math.abs(Number(delta))}% vs {currentYear - 1}
+                                {deltaSign(delta)}{Math.abs(Number(delta))}% vs {year - 1}
                               </span>
                               <br />
                               <span style={{ fontSize: 10, color: C.muted }}>
-                                vs {fmtEur(c.ytdAnterior)} en {currentYear - 1}
+                                vs {fmtEur(c.ytdAnterior)} en {year - 1}
                               </span>
                             </div>
                           )}
@@ -595,7 +595,7 @@ export default function Dashboard({
                       </div>
                       <div style={{ display: "flex", gap: 12 }}>
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: "0 0 3px", fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8 }}>{currentYear}</p>
+                          <p style={{ margin: "0 0 3px", fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8 }}>{year}</p>
                           <div style={{ height: 4, borderRadius: 2, background: `${C.muted}22` }}>
                             <div style={{
                               width: `${Math.min(100, (c.ytdActual / (ytdClientes[0]?.ytdActual || 1)) * 100)}%`,
@@ -605,7 +605,7 @@ export default function Dashboard({
                         </div>
                         {c.ytdAnterior > 0 && (
                           <div style={{ flex: 1 }}>
-                            <p style={{ margin: "0 0 3px", fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8 }}>{currentYear - 1}</p>
+                            <p style={{ margin: "0 0 3px", fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8 }}>{year - 1}</p>
                             <div style={{ height: 4, borderRadius: 2, background: `${C.muted}22` }}>
                               <div style={{
                                 width: `${Math.min(100, (c.ytdAnterior / (ytdClientes[0]?.ytdActual || 1)) * 100)}%`,

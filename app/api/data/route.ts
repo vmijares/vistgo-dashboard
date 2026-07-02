@@ -70,11 +70,17 @@ export async function GET(req: NextRequest) {
   const minYear = currentYear - 4;
 
   try {
-    // Parallel fetch of all source tables
-    // year ge funciona en HTTP producción (no usar Fecha ge ni Estado eq — problemáticos en FM OData)
-    const [facturas, presupuestos, proyectos, clientes, objetivosRaw] = await Promise.all([
+    // BUG ROOT CAUSE: Presupuesto tiene 3134 registros con year>=2022, $top=2000 cortaba los
+    // más recientes (2025-2026 tienen IDs altos, FM devuelve por ID asc por defecto).
+    // SOLUCIÓN: 3 fetches especializados cuyos filtros Estado están confirmados en FM OData.
+    //   presupuestosFEE: $select con 4 campos → payload mínimo, todos los años sin límite
+    //   presupuestosTF : "Terminado y facturado" → 2893 registros totales (confirmado)
+    //   presupuestosEE : "En ejecución"          → pocos registros, para previsión
+    const [facturas, presupuestosFEE, presupuestosTF, presupuestosEE, proyectos, clientes, objetivosRaw] = await Promise.all([
       fetchAll(`${base}/Factura?$top=2000&$filter=Year ge ${minYear}`, token),
-      fetchAll(`${base}/Presupuesto?$top=2000&$filter=year ge ${minYear}`, token),
+      fetchAll(`${base}/Presupuesto?$top=5000&$select=year,Estado,FEEGraph,CVGraph`, token),
+      fetchAll(`${base}/Presupuesto?$top=3000&$filter=Estado eq 'Terminado y facturado'`, token),
+      fetchAll(`${base}/Presupuesto?$top=500&$filter=Estado eq 'En ejecuci%C3%B3n'`, token),
       fetchAll(`${base}/ProyectosEjecutados?$top=2000&$filter=Year ge ${minYear}`, token),
       fetchAll(`${base}/ClientesGraficos?$top=500`, token),
       fetchAll(`${base}/ObjetivoAnual?$top=50`, token),
@@ -110,9 +116,9 @@ export async function GET(req: NextRequest) {
       }));
 
     // ── FEE / CV per year ─────────────────────────────────────
-    // Incluye TF + En ejecución: excluye borradores/cancelados sin eliminar el año actual
+    // presupuestosFEE tiene $select mínimo (year, Estado, FEEGraph, CVGraph) para todos los años
     const feeCvMap = new Map<number, { fee: number; cv: number }>();
-    for (const p of presupuestos) {
+    for (const p of presupuestosFEE) {
       const estado = ((p["Estado"] as string) || "").trim();
       if (estado !== "Terminado y facturado" && estado !== "En ejecución") continue;
       const year = Number(p["year"]);
@@ -305,12 +311,9 @@ export async function GET(req: NextRequest) {
       }
     }
     let previsionCurrentYear = 0;
-    for (const p of presupuestos) {
+    for (const p of presupuestosEE) {
       const fechaTermino = ((p["Fecha término"] as string) || "");
-      if (
-        ((p["Estado"] as string) || "").trim() === "En ejecución" &&
-        fechaTermino.startsWith(String(currentYear))
-      ) {
+      if (fechaTermino.startsWith(String(currentYear))) {
         previsionCurrentYear += Number(p["Venta"]) || 0;
       }
     }
@@ -322,13 +325,12 @@ export async function GET(req: NextRequest) {
     // Área = "WEB" → exclude; filter by Fecha término year (not creation year)
     type MargenRow = { nPresupuesto: string; alias: string; fechaFin: string; cliente: string; venta: number; margen: number };
     const mbByYear = new Map<number, MargenRow[]>();
-    for (const p of presupuestos) {
+    for (const p of presupuestosTF) {
       const porSobre = Number(p["Por sobre venta"]);
       const fechaTermino = ((p["Fecha término"] as string) || "");
       // Fallback to creation year if Fecha término is not filled in FM
       const ftYear = Number(fechaTermino.substring(0, 4)) || Number(p["year"]) || 0;
       if (
-        p["Estado"] !== "Terminado y facturado" ||
         !ftYear ||
         ((p["Área"] as string) || "").trim().toUpperCase().includes("WEB") ||
         porSobre <= 0 || porSobre >= 25 ||

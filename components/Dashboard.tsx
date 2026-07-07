@@ -211,10 +211,7 @@ export default function Dashboard({
   const ytdDeltaEjec  = ytdEjecPrev > 0
     ? (((ytdEjecActual - ytdEjecPrev) / ytdEjecPrev) * 100).toFixed(1) : "—";
 
-  const lastMonthName = MESES_CORTO_ES[sliceN - 1] ?? MESES_CORTO_ES[0];
-  const mesRangeLabel = sliceN === 1
-    ? lastMonthName
-    : `${MESES_CORTO_ES[0]}–${lastMonthName}`;
+  const mesRangeLabel = `${MESES_CORTO_ES[0]}–hoy`;
 
   // Previsión hasta 31/12
   const prevision = previsionAnual[year] ?? 0;

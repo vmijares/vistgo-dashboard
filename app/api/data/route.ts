@@ -336,7 +336,7 @@ export async function GET(req: NextRequest) {
         !ftYear ||
         ((p["Área"] as string) || "").trim().toUpperCase().includes("WEB") ||
         porSobre <= 0 || porSobre >= 25 ||
-        Number(p["Venta"]) <= 0
+        Number(p["Venta"]) < 1000
       ) continue;
       if (!mbByYear.has(ftYear)) mbByYear.set(ftYear, []);
       mbByYear.get(ftYear)!.push({
